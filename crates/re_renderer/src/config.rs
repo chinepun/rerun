@@ -23,6 +23,28 @@ pub enum DeviceTier {
     //HighEnd
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ReRendererConfigError {
+    #[error(
+        "Adapter does not support the minimum shader model required to run re_renderer at the {:?} tier: {:?}",
+        tier,
+        shader_model
+    )]
+    MinimumShaderModelNotSupported {
+        tier: DeviceTier,
+        shader_model: wgpu::ShaderModel,
+    },
+    #[error(
+        "Adapter does not support the downlevel capabilities required to run re_renderer at the {:?} tier: {:?}",
+        tier,
+        downlevel_flags,
+    )]
+    DownlevelCapabilitiesNotSupported {
+        tier: DeviceTier,
+        downlevel_flags: wgpu::DownlevelFlags,
+    },
+}
+
 /// Capabilities of a given device.
 ///
 /// Generally, this is a higher level interpretation of [`wgpu::Limits`].
@@ -112,28 +134,43 @@ impl DeviceCaps {
         }
     }
 
+    fn check_shader_model(
+        downlevel_capabilities: &wgpu::DownlevelCapabilities,
+        required_downlevel_capabilities: &wgpu::DownlevelCapabilities,
+        tier: DeviceTier,
+    ) -> Result<(), ReRendererConfigError> {
+        match downlevel_capabilities.shader_model >= required_downlevel_capabilities.shader_model {
+            true => Ok(()),
+            false => Err(ReRendererConfigError::MinimumShaderModelNotSupported {
+                tier,
+                shader_model: required_downlevel_capabilities.shader_model,
+            }),
+        }
+    }
+
     /// Checks if passed downlevel capabilities support the given device tier.
     pub fn check_downlevel_capabilities(
         &self,
         downlevel_capabilities: &wgpu::DownlevelCapabilities,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ReRendererConfigError> {
         let required_downlevel_capabilities = self.required_downlevel_capabilities();
-        anyhow::ensure!(
-            downlevel_capabilities.shader_model >= required_downlevel_capabilities.shader_model,
-            "Adapter does not support the minimum shader model required to run re_renderer at the {:?} tier: {:?}",
+        Self::check_shader_model(
+            downlevel_capabilities,
+            &required_downlevel_capabilities,
             self.tier,
-            required_downlevel_capabilities.shader_model
-        );
-        anyhow::ensure!(
-            downlevel_capabilities
-                .flags
-                .contains(required_downlevel_capabilities.flags),
-            "Adapter does not support the downlevel capabilities required to run re_renderer at the {:?} tier: {:?}",
-            self.tier,
-            required_downlevel_capabilities.flags - downlevel_capabilities.flags
-        );
+        )?;
 
-        Ok(())
+        match downlevel_capabilities
+            .flags
+            .contains(required_downlevel_capabilities.flags)
+        {
+            true => Ok(()),
+            false => Err(ReRendererConfigError::DownlevelCapabilitiesNotSupported {
+                tier: self.tier,
+                downlevel_flags: required_downlevel_capabilities.flags
+                    - downlevel_capabilities.flags,
+            }),
+        }
     }
 }
 
