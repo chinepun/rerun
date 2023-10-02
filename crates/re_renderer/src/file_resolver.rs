@@ -178,12 +178,13 @@
 // `#import <my_shader>` which works with "my_shader.wgsl"
 
 use std::{
+    convert::Infallible,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
 use ahash::{HashMap, HashSet, HashSetExt};
-use anyhow::{anyhow, bail, ensure, Context as _};
+use anyhow::{anyhow, ensure};
 use clean_path::Clean as _;
 
 use crate::FileSystem;
@@ -231,7 +232,7 @@ impl SearchPath {
 }
 
 impl std::str::FromStr for SearchPath {
-    type Err = anyhow::Error;
+    type Err = FileResolverError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Using implicit Vec<Result<_>> -> Result<Vec<_>> collection.
@@ -240,7 +241,7 @@ impl std::str::FromStr for SearchPath {
             .filter(|s| !s.is_empty())
             .map(|s| {
                 s.parse()
-                    .with_context(|| format!("couldn't parse {s:?} as PathBuf"))
+                    .map_or_else(|err| Err(FileResolverError::CannotParseAsPathBuf(err)), Ok)
             })
             .collect();
 
@@ -277,6 +278,32 @@ pub struct ImportClause {
     path: PathBuf,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum FileResolverError {
+    #[error("import clause must start with {prefix:?}, got {string:?}")]
+    ImportClauseWrongPrefixError { prefix: String, string: String },
+
+    #[error("import clause must contain a non-empty path")]
+    ImportClauseMustContainsNonEmptyPathError,
+
+    #[error("couldn't parse {0:?} as PathBuf")]
+    CannotParseAsPathBuf(#[from] Infallible),
+
+    #[error("misformatted import clause: {clause_str:?}")]
+    MisformattedImportClause { clause_str: String },
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FileInterpolationError {
+    #[error("import cycle detected: {path_stack:?}")]
+    ImportCycleDetected { path_stack: Vec<PathBuf> },
+
+    #[error("couldn't resolve import clause path at {path:?}")]
+    CannotResolveImportPath { path: PathBuf },
+}
+
+pub type FileInterpolationResult<T> = ::std::result::Result<T, FileInterpolationError>;
+
 impl ImportClause {
     pub const PREFIX: &str = "#import ";
 }
@@ -288,16 +315,18 @@ impl<P: Into<PathBuf>> From<P> for ImportClause {
 }
 
 impl std::str::FromStr for ImportClause {
-    type Err = anyhow::Error;
+    type Err = FileResolverError;
 
     fn from_str(clause_str: &str) -> Result<Self, Self::Err> {
         let s = clause_str.trim();
 
-        ensure!(
-            s.starts_with(ImportClause::PREFIX),
-            "import clause must start with {prefix:?}, got {s:?}",
-            prefix = ImportClause::PREFIX,
-        );
+        if !s.starts_with(ImportClause::PREFIX) {
+            return Err(FileResolverError::ImportClauseWrongPrefixError {
+                prefix: ImportClause::PREFIX.to_owned(),
+                string: s.to_owned(),
+            });
+        }
+
         let s = s.trim_start_matches(ImportClause::PREFIX).trim();
 
         let rs = s.chars().rev().collect::<String>();
@@ -308,15 +337,20 @@ impl std::str::FromStr for ImportClause {
 
         if let Some((i0, i1)) = splits {
             let s = &s[i0..i1];
-            ensure!(!s.is_empty(), "import clause must contain a non-empty path");
 
-            return s
-                .parse()
-                .with_context(|| "couldn't parse {s:?} as PathBuf")
-                .map(|path| Self { path });
+            if s.is_empty() {
+                return Err(FileResolverError::ImportClauseMustContainsNonEmptyPathError);
+            };
+
+            return s.parse().map_or_else(
+                |err| Err(FileResolverError::CannotParseAsPathBuf(err)),
+                |path| Ok(Self { path }),
+            );
         }
 
-        bail!("misformatted import clause: {clause_str:?}")
+        Err(FileResolverError::MisformattedImportClause {
+            clause_str: clause_str.to_owned(),
+        })
     }
 }
 
@@ -522,6 +556,11 @@ impl<Fs: FileSystem> FileResolver<Fs> {
                 visited_stack.insert(path.clone()),
                 "import cycle detected: {path_stack:?}"
             );
+            // if !visited_stack.insert(path.clone()) {
+            //     return Err(FileInterpolationError::ImportCycleDetected {
+            //         path_stack: path_stack.to_vec(),
+            //     });
+            // };
 
             // #pragma once
             if interp_files.contains_key(&path) {
@@ -546,6 +585,9 @@ impl<Fs: FileSystem> FileResolver<Fs> {
                         let clause_path =
                             this.resolve_clause_path(cwd, &clause.path).ok_or_else(|| {
                                 anyhow!("couldn't resolve import clause path at {:?}", clause.path)
+                                // FileInterpolationError::CannotResolveImportPath {
+                                //     path: clause.path,
+                                // }
                             })?;
                         imports.insert(clause_path.clone());
                         populate_rec(this, clause_path, interp_files, path_stack, visited_stack)
