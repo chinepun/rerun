@@ -1,13 +1,17 @@
 use super::{large_text_button, status_strings, url_large_text_button, WelcomeScreenResponse};
 use egui::{NumExt, Ui};
-use re_log_types::LogMsg;
+use re_data_store::StoreDb;
+use re_log_types::{
+    DataRow, EntityPath, LogMsg, RowId, StoreId, StoreInfo, StoreKind, StoreSource, Time, TimePoint,
+};
 use re_smart_channel::ReceiveSet;
 use re_ui::UICommandSender;
+use re_viewer_context::{SystemCommand, SystemCommandSender};
+use std::collections::HashMap;
 
-//const CPP_QUICKSTART: &str = "https://www.rerun.io/docs/getting-started/cpp";
-const PYTHON_QUICKSTART: &str = "https://www.rerun.io/docs/getting-started/python";
-const RUST_QUICKSTART: &str = "https://www.rerun.io/docs/getting-started/rust";
 const SPACE_VIEWS_HELP: &str = "https://www.rerun.io/docs/getting-started/viewer-walkthrough";
+
+const HOW_DOES_IT_WORK: &str = include_str!("../../../data/quick_start_guides/how_does_it_work.md");
 
 /// Show the welcome page.
 ///
@@ -58,10 +62,67 @@ fn onboarding_content_ui(
                 Visualize synchronized data from multiple processes, locally or over a network.",
             image: &re_ui::icons::WELCOME_SCREEN_LIVE_DATA,
             add_buttons: Box::new(|ui: &mut egui::Ui| {
-                // TODO(ab): activate when C++ is ready!
-                // url_large_text_button(ui, "C++", CPP_QUICKSTART);
-                url_large_text_button(ui, "Python", PYTHON_QUICKSTART);
-                url_large_text_button(ui, "Rust", RUST_QUICKSTART);
+                //TODO(#3870): enable with C++ guides are completed
+                #[allow(clippy::collapsible_if)]
+                if false {
+                    if large_text_button(ui, "C++").clicked() {
+                        open_quick_start(
+                            command_sender,
+                            include_str!("../../../data/quick_start_guides/cpp_native.md"),
+                            [
+                                (
+                                    "EXAMPLE_CODE",
+                                    include_str!(
+                                        "../../../data/quick_start_guides/quick_start_connect.cpp"
+                                    ),
+                                ),
+                                ("HOW_DOES_IT_WORK", HOW_DOES_IT_WORK),
+                                ("SAFARI_WARNING", safari_warning()),
+                            ]
+                            .into(),
+                            "C++ Quick Start",
+                            "cpp_quick_start",
+                        );
+                    }
+                }
+                if large_text_button(ui, "Python").clicked() {
+                    open_quick_start(
+                        command_sender,
+                        include_str!("../../../data/quick_start_guides/python_native.md"),
+                        [
+                            (
+                                "EXAMPLE_CODE",
+                                include_str!(
+                                    "../../../data/quick_start_guides/quick_start_connect.py"
+                                ),
+                            ),
+                            ("HOW_DOES_IT_WORK", HOW_DOES_IT_WORK),
+                            ("SAFARI_WARNING", safari_warning()),
+                        ]
+                        .into(),
+                        "Python Quick Start",
+                        "python_quick_start",
+                    );
+                }
+                if large_text_button(ui, "Rust").clicked() {
+                    open_quick_start(
+                        command_sender,
+                        include_str!("../../../data/quick_start_guides/rust_native.md"),
+                        [
+                            (
+                                "EXAMPLE_CODE",
+                                include_str!(
+                                    "../../../data/quick_start_guides/quick_start_connect.rs"
+                                ),
+                            ),
+                            ("HOW_DOES_IT_WORK", HOW_DOES_IT_WORK),
+                            ("SAFARI_WARNING", safari_warning()),
+                        ]
+                        .into(),
+                        "Rust Quick Start",
+                        "rust_quick_start",
+                    );
+                }
 
                 false
             }),
@@ -102,7 +163,7 @@ fn onboarding_content_ui(
         },
     ];
 
-    // Shrink images if needed so user can see all of the content buttons
+    // Shrink images if needed so user can see all the content buttons
     let max_image_height = ui.available_height() - 300.0;
 
     let centering_vspace = (ui.available_height() - 650.0) / 2.0;
@@ -230,4 +291,90 @@ fn image_banner(ui: &mut egui::Ui, icon: &re_ui::Icon, column_width: f32, max_im
                 .rounding(egui::Rounding::same(8.)),
         );
     });
+}
+
+/// Open a Quick Start recording
+///
+/// The markdown content may contain placeholders in the form of `${NAME}`. These will be replaced
+/// with the corresponding value from the `placeholder_content` hash map.
+fn open_quick_start(
+    command_sender: &re_viewer_context::CommandSender,
+    markdown: &str,
+    placeholder_content: HashMap<&'static str, &'static str>,
+    app_id: &str,
+    entity_path: &str,
+) {
+    let mut markdown = markdown.to_owned();
+
+    for (key, value) in placeholder_content {
+        markdown = markdown.replace(format!("${{{key}}}").as_str(), value);
+    }
+
+    let res = open_markdown_recording(command_sender, markdown.as_str(), app_id, entity_path);
+    if let Err(err) = res {
+        re_log::error!("Failed to load quick start: {}", err);
+    }
+}
+
+fn open_markdown_recording(
+    command_sender: &re_viewer_context::CommandSender,
+    markdown: &str,
+    app_id: &str,
+    entity_path: &str,
+) -> anyhow::Result<()> {
+    let text_doc = re_types::archetypes::TextDocument::new(markdown)
+        .with_media_type(re_types::components::MediaType::markdown());
+
+    let row = DataRow::from_archetype(
+        RowId::random(),
+        TimePoint::timeless(),
+        EntityPath::from(entity_path),
+        &text_doc,
+    )?;
+
+    let store_info = StoreInfo {
+        application_id: app_id.into(),
+        store_id: StoreId::random(StoreKind::Recording),
+        is_official_example: true,
+        started: Time::now(),
+        store_source: StoreSource::Viewer,
+        store_kind: StoreKind::Recording,
+    };
+
+    let store_db = StoreDb::from_info_and_rows(store_info, [row])?;
+    command_sender.send_system(SystemCommand::LoadStoreDb(store_db));
+
+    Ok(())
+}
+
+/// The User-Agent of the user's browser.
+fn user_agent() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    return eframe::web::user_agent();
+
+    #[cfg(not(target_arch = "wasm32"))]
+    None
+}
+
+/// Are we running on Safari?
+fn safari_warning() -> &'static str {
+    // Note that this implementation is very naive and might return false positives. This is ok for
+    // the purpose of displaying a "can't copy" warning in the Quick Start guide, but this detection
+    // is likely not suitable for pretty much anything else.
+    //
+    // See this page for more information on User Agent sniffing (and why/how to avoid it):
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Browser_detection_using_the_user_agent
+
+    let is_safari = user_agent().is_some_and(|user_agent| {
+        user_agent.contains("Safari")
+            && !user_agent.contains("Chrome")
+            && !user_agent.contains("Chromium")
+    });
+
+    if is_safari {
+        "**Note**: This browser appears to be Safari. If you are unable to copy the code, please \
+        try a different browser (see [this issue](https://github.com/emilk/egui/issues/3480))."
+    } else {
+        ""
+    }
 }

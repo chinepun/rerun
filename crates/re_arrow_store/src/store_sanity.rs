@@ -1,8 +1,5 @@
-use re_log_types::{
-    DataCellColumn, SizeBytes as _, TimeRange, COLUMN_NUM_INSTANCES, COLUMN_ROW_ID,
-    COLUMN_TIMEPOINT,
-};
-use re_types::ComponentName;
+use re_log_types::{DataCellColumn, RowId, TimeRange, COLUMN_NUM_INSTANCES, COLUMN_TIMEPOINT};
+use re_types_core::{ComponentName, Loggable, SizeBytes as _};
 
 use crate::{DataStore, IndexedBucket, IndexedBucketInner, IndexedTable, PersistentIndexedTable};
 
@@ -193,7 +190,7 @@ impl IndexedBucket {
                     (!col_insert_id.is_empty())
                         .then(|| (DataStore::insert_id_key(), col_insert_id.len())), //
                     Some((COLUMN_TIMEPOINT.into(), col_time.len())),
-                    Some((COLUMN_ROW_ID.into(), col_row_id.len())),
+                    Some((RowId::name(), col_row_id.len())),
                     Some((COLUMN_NUM_INSTANCES.into(), col_num_instances.len())),
                 ]
                 .into_iter()
@@ -274,7 +271,7 @@ impl PersistentIndexedTable {
             let column_lengths = [
                 (!col_insert_id.is_empty())
                     .then(|| (DataStore::insert_id_key(), col_insert_id.len())), //
-                Some((COLUMN_ROW_ID.into(), col_row_id.len())),
+                Some((RowId::name(), col_row_id.len())),
                 Some((COLUMN_NUM_INSTANCES.into(), col_num_instances.len())),
             ]
             .into_iter()

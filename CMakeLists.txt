@@ -42,6 +42,13 @@ function(set_default_warning_settings target)
         if(${CMAKE_COMPILE_WARNING_AS_ERROR})
             target_compile_options(${target} PRIVATE -Werror)
         endif()
+
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            # Debug build with fsanatize:
+            target_compile_options(${target} PRIVATE -g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fno-optimize-sibling-calls)
+            target_compile_options(${target} PRIVATE -fsanitize=address)
+            target_link_options(${target} PRIVATE -fsanitize=address)
+        endif()
     endif()
 endfunction()
 
@@ -54,6 +61,16 @@ endif()
 if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
 endif()
+
+# Signal to all our build scripts that we're inside the Rerun repository.
+set(RERUN_REPOSITORY YES)
+
+# Set version number.
+# Read it from the Rust toml with a regex so we don't have another place to maintain!
+file(READ "Cargo.toml" CARGO_TOML)
+string(REGEX MATCH "\nversion = \"([a-z0-9\.\+-]+)\"\n" _ ${CARGO_TOML})
+set(RERUN_VERSION ${CMAKE_MATCH_1})
+message(INFO "Rerun version ${RERUN_VERSION}")
 
 # ------------------------------------------------------------------------------
 # Loguru logging library (https://github.com/emilk/loguru):

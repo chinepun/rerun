@@ -1,4 +1,9 @@
-// The Rerun C SDK.
+// ----------------------------------------------------------------------------
+// The Rerun C SDK for Rerun version @RERUN_VERSION@
+// ----------------------------------------------------------------------------
+// This file is part of the rerun_c Rust crate.
+// EDITS TO COPIES OUTSIDE OF RERUN_C WILL BE OVERWRITTEN.
+// ----------------------------------------------------------------------------
 
 #ifndef RERUN_H
 #define RERUN_H
@@ -24,12 +29,12 @@ enum {
 /// Special value for `rr_recording_stream` methods to indicate the most appropriate
 /// globally available recording stream for recordings.
 /// (i.e. thread-local first, then global scope)
-#define RERUN_REC_STREAM_CURRENT_RECORDING ((rr_recording_stream)0xFFFFFFFF)
+#define RERUN_REC_STREAM_CURRENT_RECORDING 0xFFFFFFFF
 
 /// Special value for `rr_recording_stream` methods to indicate the most appropriate
 /// globally available recording stream for blueprints.
 /// (i.e. thread-local first, then global scope)
-#define RERUN_REC_STREAM_CURRENT_BLUEPRINT ((rr_recording_stream)0xFFFFFFFE)
+#define RERUN_REC_STREAM_CURRENT_BLUEPRINT 0xFFFFFFFE
 
 /// A unique handle for a recording stream.
 /// A recording stream handles everything related to logging data into Rerun.

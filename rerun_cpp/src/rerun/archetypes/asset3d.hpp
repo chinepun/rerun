@@ -28,8 +28,6 @@ namespace rerun {
         ///
         /// ### Simple 3D asset
         /// ```cpp,ignore
-        /// // Log a batch of 3D arrows.
-        ///
         /// #include <rerun.hpp>
         ///
         /// #include <filesystem>
@@ -50,8 +48,8 @@ namespace rerun {
         ///     auto rec = rerun::RecordingStream("rerun_example_asset3d_simple");
         ///     rec.connect("127.0.0.1:9876").throw_on_failure();
         ///
-        ///     rec.log("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP); // Set an up-axis
-        ///     rec.log("world/asset", rerun::Asset3D::from_file(path));
+        ///     rec.log_timeless("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP); // Set an up-axis
+        ///     rec.log("world/asset", rerun::Asset3D::from_file(path).value_or_throw());
         /// }
         /// ```
         struct Asset3D {
@@ -62,8 +60,7 @@ namespace rerun {
             ///
             /// Supported values:
             /// * `model/gltf-binary`
-            /// * `model/obj` (.mtl material files are not supported yet, references are silently
-            /// ignored)
+            /// * `model/obj` (.mtl material files are not supported yet, references are silently ignored)
             ///
             /// If omitted, the viewer will try to guess from the data blob.
             /// If it cannot guess, it won't be able to render the asset.
@@ -74,60 +71,30 @@ namespace rerun {
             /// Applies a transformation to the asset itself without impacting its children.
             std::optional<rerun::components::OutOfTreeTransform3D> transform;
 
-            /// Name of the indicator component, used to identify the archetype when converting to a
-            /// list of components.
+            /// Name of the indicator component, used to identify the archetype when converting to a list of components.
             static const char INDICATOR_COMPONENT_NAME[];
-            /// Indicator component, used to identify the archetype when converting to a list of
-            /// components.
+            /// Indicator component, used to identify the archetype when converting to a list of components.
             using IndicatorComponent = components::IndicatorComponent<INDICATOR_COMPONENT_NAME>;
 
           public:
             // Extensions to generated type defined in 'asset3d_ext.cpp'
 
             static std::optional<rerun::components::MediaType> guess_media_type(
-                const std::string& path //
-            ) {
-                std::filesystem::path file_path(path);
-                std::string ext = file_path.extension().string();
-                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-                if (ext == ".glb") {
-                    return rerun::components::MediaType::glb();
-                } else if (ext == ".gltf") {
-                    return rerun::components::MediaType::gltf();
-                } else if (ext == ".obj") {
-                    return rerun::components::MediaType::obj();
-                } else {
-                    return std::nullopt;
-                }
-            }
+                const std::string& path
+            );
 
             /// Creates a new [`Asset3D`] from the file contents at `path`.
             ///
             /// The [`MediaType`] will be guessed from the file extension.
             ///
-            /// If no [`MediaType`] can be guessed at the moment, the Rerun Viewer will try to guess
-            /// one from the data at render-time. If it can't, rendering will fail with an error.
-            static Asset3D from_file(const std::filesystem::path& path) {
-                std::ifstream file(path, std::ios::binary);
-                if (!file) {
-                    throw std::runtime_error("Failed to open file: " + path.string());
-                }
-
-                file.seekg(0, std::ios::end);
-                std::streampos length = file.tellg();
-                file.seekg(0, std::ios::beg);
-
-                std::vector<uint8_t> data(static_cast<size_t>(length));
-                file.read(reinterpret_cast<char*>(data.data()), length);
-
-                return Asset3D::from_bytes(data, Asset3D::guess_media_type(path));
-            }
+            /// If no [`MediaType`] can be guessed at the moment, the Rerun Viewer will try to guess one
+            /// from the data at render-time. If it can't, rendering will fail with an error.
+            static Result<Asset3D> from_file(const std::filesystem::path& path);
 
             /// Creates a new [`Asset3D`] from the given `bytes`.
             ///
-            /// If no [`MediaType`] is specified, the Rerun Viewer will try to guess one from the
-            /// data at render-time. If it can't, rendering will fail with an error.
+            /// If no [`MediaType`] is specified, the Rerun Viewer will try to guess one from the data
+            /// at render-time. If it can't, rendering will fail with an error.
             static Asset3D from_bytes(
                 const std::vector<uint8_t> bytes,
                 std::optional<rerun::components::MediaType> media_type
@@ -148,8 +115,7 @@ namespace rerun {
             ///
             /// Supported values:
             /// * `model/gltf-binary`
-            /// * `model/obj` (.mtl material files are not supported yet, references are silently
-            /// ignored)
+            /// * `model/obj` (.mtl material files are not supported yet, references are silently ignored)
             ///
             /// If omitted, the viewer will try to guess from the data blob.
             /// If it cannot guess, it won't be able to render the asset.

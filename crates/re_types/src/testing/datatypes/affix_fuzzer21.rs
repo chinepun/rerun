@@ -14,10 +14,12 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
+use ::re_types_core::external::arrow2;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AffixFuzzer21 {
     pub single_half: arrow2::types::f16,
-    pub many_halves: crate::ArrowBuffer<arrow2::types::f16>,
+    pub many_halves: ::re_types_core::ArrowBuffer<arrow2::types::f16>,
 }
 
 impl<'a> From<AffixFuzzer21> for ::std::borrow::Cow<'a, AffixFuzzer21> {
@@ -34,8 +36,8 @@ impl<'a> From<&'a AffixFuzzer21> for ::std::borrow::Cow<'a, AffixFuzzer21> {
     }
 }
 
-impl crate::Loggable for AffixFuzzer21 {
-    type Name = crate::DatatypeName;
+impl ::re_types_core::Loggable for AffixFuzzer21 {
+    type Name = ::re_types_core::DatatypeName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -45,7 +47,7 @@ impl crate::Loggable for AffixFuzzer21 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::Struct(vec![
             Field {
                 name: "single_half".to_owned(),
@@ -70,13 +72,13 @@ impl crate::Loggable for AffixFuzzer21 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -85,7 +87,7 @@ impl crate::Loggable for AffixFuzzer21 {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -103,7 +105,7 @@ impl crate::Loggable for AffixFuzzer21 {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let single_half_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let single_half_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -128,7 +130,7 @@ impl crate::Loggable for AffixFuzzer21 {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let many_halves_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let many_halves_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -141,8 +143,8 @@ impl crate::Loggable for AffixFuzzer21 {
                                 .collect::<Vec<_>>()
                                 .concat()
                                 .into();
-                            let many_halves_inner_bitmap: Option<::arrow2::bitmap::Bitmap> = None;
-                            let offsets = ::arrow2::offset::Offsets::<i32>::try_from_lengths(
+                            let many_halves_inner_bitmap: Option<arrow2::bitmap::Bitmap> = None;
+                            let offsets = arrow2::offset::Offsets::<i32>::try_from_lengths(
                                 many_halves.iter().map(|opt| {
                                     opt.as_ref()
                                         .map(|datum| datum.num_instances())
@@ -179,20 +181,20 @@ impl crate::Loggable for AffixFuzzer21 {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok({
             let arrow_data = arrow_data
                 .as_any()
-                .downcast_ref::<::arrow2::array::StructArray>()
+                .downcast_ref::<arrow2::array::StructArray>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::Struct(vec![
                             Field {
                                 name: "single_half".to_owned(),
@@ -228,7 +230,7 @@ impl crate::Loggable for AffixFuzzer21 {
                     .collect();
                 let single_half = {
                     if !arrays_by_name.contains_key("single_half") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "single_half",
                         ))
@@ -239,7 +241,7 @@ impl crate::Loggable for AffixFuzzer21 {
                         .as_any()
                         .downcast_ref::<Float16Array>()
                         .ok_or_else(|| {
-                            crate::DeserializationError::datatype_mismatch(
+                            ::re_types_core::DeserializationError::datatype_mismatch(
                                 DataType::Float16,
                                 arrow_data.data_type().clone(),
                             )
@@ -250,7 +252,7 @@ impl crate::Loggable for AffixFuzzer21 {
                 };
                 let many_halves = {
                     if !arrays_by_name.contains_key("many_halves") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "many_halves",
                         ))
@@ -260,9 +262,9 @@ impl crate::Loggable for AffixFuzzer21 {
                     {
                         let arrow_data = arrow_data
                             .as_any()
-                            .downcast_ref::<::arrow2::array::ListArray<i32>>()
+                            .downcast_ref::<arrow2::array::ListArray<i32>>()
                             .ok_or_else(|| {
-                                crate::DeserializationError::datatype_mismatch(
+                                ::re_types_core::DeserializationError::datatype_mismatch(
                                     DataType::List(Box::new(Field {
                                         name: "item".to_owned(),
                                         data_type: DataType::Float16,
@@ -282,7 +284,7 @@ impl crate::Loggable for AffixFuzzer21 {
                                     .as_any()
                                     .downcast_ref::<Float16Array>()
                                     .ok_or_else(|| {
-                                        crate::DeserializationError::datatype_mismatch(
+                                        ::re_types_core::DeserializationError::datatype_mismatch(
                                             DataType::Float16,
                                             arrow_data_inner.data_type().clone(),
                                         )
@@ -302,10 +304,12 @@ impl crate::Loggable for AffixFuzzer21 {
                                     let start = *start as usize;
                                     let end = start + len;
                                     if end as usize > arrow_data_inner.len() {
-                                        return Err(crate::DeserializationError::offset_slice_oob(
-                                            (start, end),
-                                            arrow_data_inner.len(),
-                                        ));
+                                        return Err(
+                                            ::re_types_core::DeserializationError::offset_slice_oob(
+                                                (start, end),
+                                                arrow_data_inner.len(),
+                                            ),
+                                        );
                                     }
 
                                     #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
@@ -314,12 +318,12 @@ impl crate::Loggable for AffixFuzzer21 {
                                             .clone()
                                             .sliced_unchecked(start as usize, end - start as usize)
                                     };
-                                    let data = crate::ArrowBuffer::from(data);
+                                    let data = ::re_types_core::ArrowBuffer::from(data);
                                     Ok(data)
                                 })
                                 .transpose()
                             })
-                            .collect::<crate::DeserializationResult<Vec<Option<_>>>>()?
+                            .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()?
                         }
                         .into_iter()
                     }
@@ -332,12 +336,12 @@ impl crate::Loggable for AffixFuzzer21 {
                     opt.map(|(single_half, many_halves)| {
                         Ok(Self {
                             single_half: single_half
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context(
                                     "rerun.testing.datatypes.AffixFuzzer21#single_half",
                                 )?,
                             many_halves: many_halves
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context(
                                     "rerun.testing.datatypes.AffixFuzzer21#many_halves",
                                 )?,
@@ -345,7 +349,7 @@ impl crate::Loggable for AffixFuzzer21 {
                     })
                     .transpose()
                 })
-                .collect::<crate::DeserializationResult<Vec<_>>>()
+                .collect::<::re_types_core::DeserializationResult<Vec<_>>>()
                 .with_context("rerun.testing.datatypes.AffixFuzzer21")?
             }
         })

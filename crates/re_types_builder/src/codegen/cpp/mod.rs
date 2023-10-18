@@ -3,20 +3,17 @@ mod forward_decl;
 mod includes;
 mod method;
 
-use std::collections::BTreeSet;
-
 use camino::{Utf8Path, Utf8PathBuf};
 use itertools::Itertools;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use rayon::prelude::*;
 
-use crate::codegen::common::write_file;
 use crate::{
     codegen::{autogen_warning, common::collect_examples_for_api_docs},
-    ArrowRegistry, Docs, ElementType, ObjectField, ObjectKind, Objects, Type,
+    format_path, ArrowRegistry, Docs, ElementType, GeneratedFiles, Object, ObjectField, ObjectKind,
+    ObjectSpecifics, Objects, Reporter, Type, ATTR_CPP_NO_FIELD_CTORS,
 };
-use crate::{Object, ObjectSpecifics, Reporter, ATTR_CPP_NO_FIELD_CTORS};
 
 use self::array_builder::{
     arrow_array_builder_type, arrow_array_builder_type_object,
@@ -53,7 +50,7 @@ fn string_from_token_stream(token_stream: &TokenStream, source_path: Option<&Utf
     let mut code = String::new();
     code.push_str(&format!("// {}\n", autogen_warning!()));
     if let Some(source_path) = source_path {
-        code.push_str(&format!("// Based on {source_path:?}.\n"));
+        code.push_str(&format!("// Based on {:?}.\n", format_path(source_path)));
     }
 
     code.push('\n');
@@ -62,9 +59,9 @@ fn string_from_token_stream(token_stream: &TokenStream, source_path: Option<&Utf
         .to_string()
         .replace(&format!("{NEWLINE_TOKEN:?}"), "\n")
         .replace(NEWLINE_TOKEN, "\n") // Should only happen inside header extensions.
-        .replace(&format!("{NORMAL_COMMENT_PREFIX_TOKEN:?} \""), "//")
+        .replace(&format!("{NORMAL_COMMENT_PREFIX_TOKEN:?} \""), "// ")
         .replace(&format!("\" {NORMAL_COMMENT_SUFFIX_TOKEN:?}"), "\n")
-        .replace(&format!("{DOC_COMMENT_PREFIX_TOKEN:?} \""), "///")
+        .replace(&format!("{DOC_COMMENT_PREFIX_TOKEN:?} \""), "/// ")
         .replace(&format!("\" {DOC_COMMENT_SUFFIX_TOKEN:?}"), "\n")
         .replace(&format!("{ANGLE_BRACKET_LEFT_TOKEN:?} \""), "<")
         .replace(&format!("\" {ANGLE_BRACKET_RIGHT_TOKEN:?}"), ">")
@@ -92,11 +89,6 @@ fn string_from_token_stream(token_stream: &TokenStream, source_path: Option<&Utf
     code
 }
 
-fn format_code(code: &str) -> String {
-    clang_format::clang_format_with_style(code, &clang_format::ClangFormatStyle::File)
-        .expect("Failed to run clang-format")
-}
-
 pub struct CppCodeGenerator {
     output_path: Utf8PathBuf,
 }
@@ -107,11 +99,10 @@ impl crate::CodeGenerator for CppCodeGenerator {
         reporter: &Reporter,
         objects: &Objects,
         _arrow_registry: &ArrowRegistry,
-    ) -> BTreeSet<Utf8PathBuf> {
+    ) -> GeneratedFiles {
         ObjectKind::ALL
             .par_iter()
-            .map(|object_kind| self.generate_folder(reporter, objects, *object_kind))
-            .flatten()
+            .flat_map(|object_kind| self.generate_folder(reporter, objects, *object_kind))
             .collect()
     }
 }
@@ -125,14 +116,15 @@ impl CppCodeGenerator {
 
     fn generate_folder(
         &self,
-        reporter: &Reporter,
+        _reporter: &Reporter,
         objects: &Objects,
         object_kind: ObjectKind,
-    ) -> BTreeSet<Utf8PathBuf> {
+    ) -> GeneratedFiles {
         let folder_name = object_kind.plural_snake_case();
         let folder_path_sdk = self.output_path.join("src/rerun").join(folder_name);
         let folder_path_testing = self.output_path.join("tests/generated").join(folder_name);
-        let mut filepaths = BTreeSet::default();
+
+        let mut files_to_write = GeneratedFiles::default();
 
         // Generate folder contents:
         let ordered_objects = objects.ordered_objects(object_kind.into());
@@ -149,24 +141,22 @@ impl CppCodeGenerator {
             let (hpp, cpp) = generate_hpp_cpp(objects, obj, hpp_includes, &hpp_type_extensions);
 
             for (extension, tokens) in [("hpp", hpp), ("cpp", cpp)] {
-                let mut string = string_from_token_stream(&tokens, obj.relative_filepath());
+                let mut contents = string_from_token_stream(&tokens, obj.relative_filepath());
                 if let Some(hpp_extension_string) = &hpp_extension_string {
-                    string = string.replace(
+                    contents = contents.replace(
                         &format!("\"{HEADER_EXTENSION_TOKEN}\""), // NOLINT
                         hpp_extension_string,
                     );
                 }
-                let string = format_code(&string);
                 let folder_path = if obj.is_testing() {
                     &folder_path_testing
                 } else {
                     &folder_path_sdk
                 };
                 let filepath = folder_path.join(format!("{filename_stem}.{extension}"));
-                write_file(&filepath, &string);
-                let inserted = filepaths.insert(filepath);
+                let previous = files_to_write.insert(filepath, contents);
                 assert!(
-                    inserted,
+                    previous.is_none(),
                     "Multiple objects with the same name: {:?}",
                     obj.name
                 );
@@ -194,15 +184,11 @@ impl CppCodeGenerator {
                 .parent()
                 .unwrap()
                 .join(format!("{folder_name}.hpp"));
-            let string = string_from_token_stream(&tokens, None);
-            let string = format_code(&string);
-            write_file(&filepath, &string);
-            filepaths.insert(filepath);
+            let contents = string_from_token_stream(&tokens, None);
+            files_to_write.insert(filepath, contents);
         }
 
-        super::common::remove_old_files_from_folder(reporter, folder_path_sdk, &filepaths);
-
-        filepaths
+        files_to_write
     }
 }
 
@@ -323,7 +309,7 @@ impl QuotedObject {
     ) -> Self {
         match obj.specifics {
             crate::ObjectSpecifics::Struct => match obj.kind {
-                ObjectKind::Datatype | ObjectKind::Component => {
+                ObjectKind::Datatype | ObjectKind::Component | ObjectKind::Blueprint => {
                     Self::from_struct(objects, obj, hpp_includes, hpp_type_extensions)
                 }
                 ObjectKind::Archetype => {
@@ -607,7 +593,6 @@ impl QuotedObject {
             methods.push(component_to_data_cell_method(
                 &type_ident,
                 &mut hpp_includes,
-                &mut cpp_includes,
             ));
         }
 
@@ -811,8 +796,9 @@ impl QuotedObject {
                 let comment = quote_comment("Nothing to destroy");
                 quote! {
                     case detail::#tag_typename::NONE: {
-                        break; #comment
-                    }
+                        #NEWLINE_TOKEN
+                        #comment
+                    } break;
                 }
             })
             .chain(obj.fields.iter().map(|obj_field| {
@@ -823,8 +809,9 @@ impl QuotedObject {
                     let comment = quote_comment("has a trivial destructor");
                     quote! {
                         case detail::#tag_typename::#tag_ident: {
-                            break; #comment
-                        }
+                            #NEWLINE_TOKEN
+                            #comment
+                        } break;
                     }
                 } else if let Type::Array { elem_type, length } = &obj_field.typ {
                     // We need special casing for destroying arrays in C++:
@@ -836,8 +823,7 @@ impl QuotedObject {
                             for (size_t i = #length; i > 0; i -= 1) {
                                 _data.#field_ident[i-1].~TypeAlias();
                             }
-                            break;
-                        }
+                        } break;
                     }
                 } else {
                     let typedef_declaration =
@@ -847,8 +833,7 @@ impl QuotedObject {
                         case detail::#tag_typename::#tag_ident: {
                             typedef #typedef_declaration;
                             _data.#field_ident.~TypeAlias();
-                            break;
-                        }
+                        } break;
                     }
                 }
             }))
@@ -865,8 +850,8 @@ impl QuotedObject {
 
         let copy_constructor = {
             // Note that `switch` on an enum without handling all cases causes `-Wswitch-enum` warning!
-            let mut copy_match_arms = Vec::new();
-            let mut default_match_arms = Vec::new();
+            let mut placement_new_arms = Vec::new();
+            let mut trivial_memcpy_cases = Vec::new();
             for obj_field in &obj.fields {
                 let tag_ident = format_ident!("{}", obj_field.name);
                 let case = quote!(case detail::#tag_typename::#tag_ident:);
@@ -875,14 +860,19 @@ impl QuotedObject {
                 // but is typically the reason why we need to do this in the first place - if we'd always memcpy we'd get double-free errors.
                 // (As with swap, we generously assume that objects are rellocatable)
                 if obj_field.typ.has_default_destructor(objects) {
-                    default_match_arms.push(case);
+                    trivial_memcpy_cases.push(case);
                 } else {
+                    // the `this->_data` union is not yet initialized, so we must use placement new:
+                    let typedef_declaration =
+                        quote_variable(&mut hpp_includes, obj_field, &format_ident!("TypeAlias"));
+                    hpp_includes.insert_system("new"); // placement-new
+
                     let field_ident = format_ident!("{}", obj_field.snake_case_name());
-                    copy_match_arms.push(quote! {
+                    placement_new_arms.push(quote! {
                         #case {
-                            _data.#field_ident = other._data.#field_ident;
-                            break;
-                        }
+                            typedef #typedef_declaration;
+                            new (&_data.#field_ident) TypeAlias(other._data.#field_ident);
+                        } break;
                     });
                 }
             }
@@ -893,21 +883,51 @@ impl QuotedObject {
                 std::memcpy(thisbytes, otherbytes, sizeof(detail::#data_typename));
             };
 
-            if copy_match_arms.is_empty() {
-                quote!(#pascal_case_ident(const #pascal_case_ident& other) : _tag(other._tag) {
-                    #trivial_memcpy
-                })
-            } else {
-                quote!(#pascal_case_ident(const #pascal_case_ident& other) : _tag(other._tag) {
-                    switch (other._tag) {
-                        #(#copy_match_arms)*
+            let comment = quote_doc_comment("Copy constructor");
 
-                        case detail::#tag_typename::NONE:
-                        #(#default_match_arms)*
+            if placement_new_arms.is_empty() {
+                quote! {
+                    #NEWLINE_TOKEN
+                    #NEWLINE_TOKEN
+                    #comment
+                    #pascal_case_ident(const #pascal_case_ident& other) : _tag(other._tag) {
                         #trivial_memcpy
-                            break;
                     }
-                })
+                }
+            } else if trivial_memcpy_cases.is_empty() {
+                quote! {
+                    #NEWLINE_TOKEN
+                    #NEWLINE_TOKEN
+                    #comment
+                    #pascal_case_ident(const #pascal_case_ident& other) : _tag(other._tag) {
+                        switch (other._tag) {
+                            #(#placement_new_arms)*
+
+                            case detail::#tag_typename::NONE: {
+                                // there is nothing to copy
+                            } break;
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    #NEWLINE_TOKEN
+                    #NEWLINE_TOKEN
+                    #comment
+                    #pascal_case_ident(const #pascal_case_ident& other) : _tag(other._tag) {
+                        switch (other._tag) {
+                            #(#placement_new_arms)*
+
+                            #(#trivial_memcpy_cases)* {
+                                #trivial_memcpy
+                            } break;
+
+                            case detail::#tag_typename::NONE: {
+                                // there is nothing to copy
+                            } break;
+                        }
+                    }
+                }
             }
         };
 
@@ -1175,7 +1195,7 @@ fn new_arrow_array_builder_method(
             name_and_parameters: quote!(new_arrow_array_builder(arrow::MemoryPool * memory_pool)),
         },
         definition_body: quote! {
-            if (!memory_pool) {
+            if (memory_pool == nullptr) {
                 return Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
             }
             #NEWLINE_TOKEN
@@ -1212,10 +1232,10 @@ fn fill_arrow_array_builder_method(
             },
         },
         definition_body: quote! {
-            if (!builder) {
+            if (builder == nullptr) {
                 return Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
             }
-            if (!elements) {
+            if (elements == nullptr) {
                 return Error(ErrorCode::UnexpectedNullArgument, "Cannot serialize null pointer to arrow array.");
             }
             #NEWLINE_TOKEN
@@ -1229,16 +1249,10 @@ fn fill_arrow_array_builder_method(
     }
 }
 
-fn component_to_data_cell_method(
-    type_ident: &Ident,
-    hpp_includes: &mut Includes,
-    cpp_includes: &mut Includes,
-) -> Method {
+fn component_to_data_cell_method(type_ident: &Ident, hpp_includes: &mut Includes) -> Method {
     hpp_includes.insert_system("memory"); // std::shared_ptr
     hpp_includes.insert_rerun("data_cell.hpp");
     hpp_includes.insert_rerun("result.hpp");
-    cpp_includes.insert_rerun("arrow.hpp"); // ipc_from_table
-    cpp_includes.insert_system("arrow/table.h"); // Table::Make
 
     let todo_pool = quote_comment("TODO(andreas): Allow configuring the memory pool.");
 
@@ -1271,21 +1285,7 @@ fn component_to_data_cell_method(
             ARROW_RETURN_NOT_OK(builder->Finish(&array));
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
-            auto schema = arrow::schema({arrow::field(
-                #type_ident::NAME, // Unused, but should be the name of the field in the archetype if any.
-                #type_ident::arrow_datatype(),
-                false
-            )});
-            #NEWLINE_TOKEN
-            #NEWLINE_TOKEN
-            rerun::DataCell cell;
-            cell.component_name = #type_ident::NAME;
-            const auto ipc_result = rerun::ipc_from_table(*arrow::Table::Make(schema, {array}));
-            RR_RETURN_NOT_OK(ipc_result.error);
-            cell.buffer = std::move(ipc_result.value);
-            #NEWLINE_TOKEN
-            #NEWLINE_TOKEN
-            return cell;
+            return rerun::DataCell::create(#type_ident::NAME, #type_ident::arrow_datatype(), std::move(array));
         },
         inline: false,
     }
@@ -1424,10 +1424,73 @@ fn quote_fill_arrow_array_builder(
                     let arrow_builder_type = arrow_array_builder_type(&variant.typ, objects);
                     let variant_name = format_ident!("{}", variant.name);
 
-                    let variant_append = if variant.typ.is_plural() {
-                        quote! {
-                            (void)#variant_builder;
-                            return Error(ErrorCode::NotImplemented, "TODO(andreas): list types in unions are not yet supported");
+                    let variant_append = if let Some(element_type) = variant.typ.plural_inner() {
+                        if variant.is_nullable {
+                            let error = format!("Failed to serialize {}::{}: nullable list types in unions not yet implemented", obj.name, variant.name);
+                            quote! {
+                                (void)#variant_builder;
+                                return Error(ErrorCode::NotImplemented, #error);
+                            }
+                        } else if arrow_builder_type == "ListBuilder" {
+                            let field_name = format_ident!("{}", variant.snake_case_name());
+
+                            if *element_type == ElementType::Float16 {
+                                // We need an extra cast for float16:
+                                quote! {
+                                    ARROW_RETURN_NOT_OK(variant_builder->Append());
+                                    auto value_builder =
+                                        static_cast<arrow::HalfFloatBuilder *>(variant_builder->value_builder());
+                                    const rerun::half* values = union_instance._data.#field_name.data();
+                                    ARROW_RETURN_NOT_OK(value_builder->AppendValues(
+                                        reinterpret_cast<const uint16_t*>(values),
+                                        static_cast<int64_t>(union_instance._data.#field_name.size())
+                                    ));
+                                }
+                            } else {
+                                let type_builder_name = match element_type {
+                                    ElementType::UInt8 => Some("UInt8Builder"),
+                                    ElementType::UInt16 => Some("UInt16Builder"),
+                                    ElementType::UInt32 => Some("UInt32Builder"),
+                                    ElementType::UInt64 => Some("UInt64Builder"),
+                                    ElementType::Int8 => Some("Int8Builder"),
+                                    ElementType::Int16 => Some("Int16Builder"),
+                                    ElementType::Int32 => Some("Int32Builder"),
+                                    ElementType::Int64 => Some("Int64Builder"),
+                                    ElementType::Bool => Some("BoolBuilder"),
+                                    ElementType::Float16 => Some("HalfFloatBuilder"),
+                                    ElementType::Float32 => Some("FloatBuilder"),
+                                    ElementType::Float64 => Some("DoubleBuilder"),
+                                    ElementType::String => Some("StringBuilder"),
+                                    ElementType::Object(_) => None,
+                                };
+
+                                if let Some(type_builder_name) = type_builder_name {
+                                    let typ_builder_ident = format_ident!("{type_builder_name}");
+
+                                    quote! {
+                                        ARROW_RETURN_NOT_OK(variant_builder->Append());
+
+                                        auto value_builder =
+                                            static_cast<arrow::#typ_builder_ident *>(variant_builder->value_builder());
+                                        ARROW_RETURN_NOT_OK(value_builder->AppendValues(
+                                            union_instance._data.#field_name.data(),
+                                            static_cast<int64_t>(union_instance._data.#field_name.size())
+                                        ));
+                                    }
+                                } else {
+                                    let error = format!("Failed to serialize {}::{}: objects ({:?}) in unions not yet implemented", obj.name, variant.name, element_type);
+                                    quote! {
+                                        (void)#variant_builder;
+                                        return Error(ErrorCode::NotImplemented, #error);
+                                    }
+                                }
+                            }
+                        } else {
+                            let error = format!("Failed to serialize {}::{}: {} in unions not yet implemented", obj.name, variant.name, arrow_builder_type);
+                            quote! {
+                                (void)#variant_builder;
+                                return Error(ErrorCode::NotImplemented, #error);
+                            }
                         }
                     } else {
                         let variant_accessor = quote!(union_instance._data);
@@ -1438,8 +1501,7 @@ fn quote_fill_arrow_array_builder(
                         case detail::#tag_name::#variant_name: {
                             auto #variant_builder = static_cast<arrow::#arrow_builder_type*>(variant_builder_untyped);
                             #variant_append
-                            break;
-                        }
+                        } break;
                     }
                 });
 
@@ -1458,8 +1520,7 @@ fn quote_fill_arrow_array_builder(
                         switch (union_instance._tag) {
                             case detail::#tag_name::NONE: {
                                 ARROW_RETURN_NOT_OK(variant_builder_untyped->AppendNull());
-                                break;
-                            }
+                            } break;
                             #(#tag_cases)*
                         }
                     }
@@ -1586,7 +1647,7 @@ fn quote_append_single_field_to_builder(
     element_accessor: &TokenStream,
     includes: &mut Includes,
 ) -> TokenStream {
-    let field_name = format_ident!("{}", crate::to_snake_case(&field.name));
+    let field_name = format_ident!("{}", field.snake_case_name());
     let value_access = if field.is_nullable {
         quote!(element.#field_name.value())
     } else {
@@ -1846,7 +1907,7 @@ fn quote_constants_header_and_cpp(
                 quote!(const char #obj_type_ident::INDICATOR_COMPONENT_NAME[] = #indicator_fqname),
             );
         }
-        ObjectKind::Datatype => {}
+        ObjectKind::Datatype | ObjectKind::Blueprint => {}
     }
 
     (hpp, cpp)
@@ -2017,7 +2078,7 @@ fn quote_obj_docs(obj: &Object) -> TokenStream {
 
     if let Some(first_line) = lines.first_mut() {
         // Prefix with object kind:
-        *first_line = format!(" **{}**:{}", obj.kind.singular_name(), first_line);
+        *first_line = format!("**{}**: {}", obj.kind.singular_name(), first_line);
     }
 
     quote_doc_lines(&lines)
@@ -2052,13 +2113,13 @@ fn lines_from_docs(docs: &Docs) -> Vec<String> {
             } = &example.base;
 
             if let Some(title) = title {
-                lines.push(format!(" ### {title}"));
+                lines.push(format!("### {title}"));
             } else {
                 lines.push(format!("### `{name}`:"));
             }
-            lines.push(" ```cpp,ignore".into());
-            lines.extend(example.lines.iter().map(|line| format!(" {line}")));
-            lines.push(" ```".into());
+            lines.push("```cpp,ignore".into());
+            lines.extend(example.lines.iter().cloned());
+            lines.push("```".into());
             if examples.peek().is_some() {
                 // blank line between examples
                 lines.push(String::new());

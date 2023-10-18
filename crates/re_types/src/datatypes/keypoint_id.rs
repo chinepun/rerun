@@ -14,6 +14,8 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
+use ::re_types_core::external::arrow2;
+
 /// **Datatype**: A 16-bit ID representing a type of semantic keypoint within a class.
 ///
 /// `KeypointId`s are only meaningful within the context of a [`crate::datatypes::ClassDescription`].
@@ -64,8 +66,8 @@ impl<'a> From<&'a KeypointId> for ::std::borrow::Cow<'a, KeypointId> {
     }
 }
 
-impl crate::Loggable for KeypointId {
-    type Name = crate::DatatypeName;
+impl ::re_types_core::Loggable for KeypointId {
+    type Name = ::re_types_core::DatatypeName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -75,20 +77,20 @@ impl crate::Loggable for KeypointId {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::UInt16
     }
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data0): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -101,7 +103,7 @@ impl crate::Loggable for KeypointId {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let data0_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let data0_bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -116,19 +118,19 @@ impl crate::Loggable for KeypointId {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok(arrow_data
             .as_any()
             .downcast_ref::<UInt16Array>()
             .ok_or_else(|| {
-                crate::DeserializationError::datatype_mismatch(
+                ::re_types_core::DeserializationError::datatype_mismatch(
                     DataType::UInt16,
                     arrow_data.data_type().clone(),
                 )
@@ -136,9 +138,9 @@ impl crate::Loggable for KeypointId {
             .with_context("rerun.datatypes.KeypointId#id")?
             .into_iter()
             .map(|opt| opt.copied())
-            .map(|v| v.ok_or_else(crate::DeserializationError::missing_data))
+            .map(|v| v.ok_or_else(::re_types_core::DeserializationError::missing_data))
             .map(|res| res.map(|v| Some(Self(v))))
-            .collect::<crate::DeserializationResult<Vec<Option<_>>>>()
+            .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()
             .with_context("rerun.datatypes.KeypointId#id")
             .with_context("rerun.datatypes.KeypointId")?)
     }

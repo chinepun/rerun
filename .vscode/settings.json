@@ -68,6 +68,7 @@
     "python.analysis.extraPaths": [
         "rerun_py/rerun_sdk"
     ],
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools", // Use cmake-tools to grab configs.
     "cmake.buildDirectory": "${workspaceRoot}/build/",
     "C_Cpp.autoAddFileAssociations": false,
     "rust-analyzer.showUnlinkedFileNotification": false,
