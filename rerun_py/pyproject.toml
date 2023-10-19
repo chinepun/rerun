@@ -105,7 +105,6 @@ select = [
 
 [tool.ruff.per-file-ignores]
 "docs/code-examples/*" = ["I002"]
-"docs/code-examples/extension-components/example.py" = ["F821"]
 "__init__.py" = ["F401", "F403"]
 
 [tool.ruff.isort]
@@ -118,4 +117,12 @@ required-imports = ["from __future__ import annotations"]
 # See https://github.com/rerun-io/rerun/pull/1085 for more details
 include = ["rerun_sdk.pth", "rerun_sdk/rerun_demo/colmap_fiat.rrd"]
 locked = true
+name = "rerun_bindings"                                             # name of the .so library that the Python module will import
 python-packages = ["rerun_sdk/rerun", "rerun_sdk/rerun_demo"]
+
+[tool.pytest.ini_options]
+# These conform to Python's Warning Filter syntax:
+# https://docs.python.org/3/library/warnings.html#warning-filter
+filterwarnings = """
+error
+"""

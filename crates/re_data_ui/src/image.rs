@@ -1,7 +1,6 @@
 use egui::{Color32, Vec2};
 use itertools::Itertools as _;
 
-use re_data_store::{InstancePathHash, VersionedInstancePathHash};
 use re_log_types::RowId;
 use re_renderer::renderer::ColormappedTexture;
 use re_types::components::{ClassId, DepthMeter};
@@ -32,18 +31,15 @@ impl EntityDataUi for re_types::components::TensorData {
     ) {
         re_tracing::profile_function!();
 
-        let row_id = ctx
+        let tensor_data_row_id = ctx
             .store_db
-            .entity_db
-            .data_store
+            .store()
             .query_latest_component::<re_types::components::TensorData>(entity_path, query)
             .map_or(RowId::ZERO, |tensor| tensor.row_id);
 
-        // NOTE: Tensors don't support batches at the moment so always splat.
-        let tensor_path_hash = InstancePathHash::entity_splat(entity_path).versioned(row_id);
         let decoded = ctx
             .cache
-            .entry(|c: &mut TensorDecodeCache| c.entry(tensor_path_hash, self.0.clone()));
+            .entry(|c: &mut TensorDecodeCache| c.entry(tensor_data_row_id, self.0.clone()));
         match decoded {
             Ok(decoded) => {
                 let annotations = crate::annotations(ctx, query, entity_path);
@@ -53,7 +49,7 @@ impl EntityDataUi for re_types::components::TensorData {
                     verbosity,
                     entity_path,
                     &annotations,
-                    tensor_path_hash,
+                    tensor_data_row_id,
                     &self.0,
                     &decoded,
                 );
@@ -72,7 +68,7 @@ fn tensor_ui(
     verbosity: UiVerbosity,
     entity_path: &re_data_store::EntityPath,
     annotations: &Annotations,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     original_tensor: &TensorData,
     tensor: &DecodedTensor,
 ) {
@@ -80,7 +76,7 @@ fn tensor_ui(
     // Even if not, we will show info about the tensor.
     let tensor_stats = ctx
         .cache
-        .entry(|c: &mut TensorStatsCache| c.entry(tensor_path_hash, tensor));
+        .entry(|c: &mut TensorStatsCache| c.entry(tensor_data_row_id, tensor));
     let debug_name = entity_path.to_string();
 
     let meaning = image_meaning_for_entity(entity_path, ctx);
@@ -97,7 +93,7 @@ fn tensor_ui(
     let texture_result = gpu_bridge::tensor_to_gpu(
         ctx.render_ctx,
         &debug_name,
-        tensor_path_hash,
+        tensor_data_row_id,
         tensor,
         meaning,
         &tensor_stats,
@@ -107,11 +103,11 @@ fn tensor_ui(
 
     match verbosity {
         UiVerbosity::Small => {
-            ui.horizontal_centered(|ui| {
+            ui.horizontal(|ui| {
                 if let Some(texture) = &texture_result {
                     // We want all preview images to take up the same amount of space,
                     // no matter what the actual aspect ratio of the images are.
-                    let preview_size = Vec2::splat(24.0);
+                    let preview_size = Vec2::splat(ui.available_height());
                     ui.allocate_ui_with_layout(
                         preview_size,
                         egui::Layout::centered_and_justified(egui::Direction::TopDown),
@@ -142,10 +138,18 @@ fn tensor_ui(
                     );
                 }
 
+                let shape = match tensor.image_height_width_channels() {
+                    Some([h, w, c]) => vec![
+                        TensorDimension::height(h),
+                        TensorDimension::width(w),
+                        TensorDimension::depth(c),
+                    ],
+                    None => tensor.shape.clone(),
+                };
                 ui.label(format!(
                     "{} x {}{}",
                     tensor.dtype(),
-                    format_tensor_shape_single_line(tensor.shape()),
+                    format_tensor_shape_single_line(shape.as_slice()),
                     if original_tensor.buffer.is_compressed_image() {
                         " (compressed)"
                     } else {
@@ -199,7 +203,7 @@ fn tensor_ui(
                             ctx.render_ctx,
                             ui,
                             response,
-                            tensor_path_hash,
+                            tensor_data_row_id,
                             tensor,
                             &tensor_stats,
                             annotations,
@@ -220,6 +224,9 @@ fn tensor_ui(
                     }
 
                     if let Some([_h, _w, channels]) = tensor.image_height_width_channels() {
+                        if let TensorBuffer::Nv12(_) = &tensor.buffer {
+                            return;
+                        }
                         if channels == 3 {
                             if let TensorBuffer::U8(data) = &tensor.buffer {
                                 ui.collapsing("Histogram", |ui| {
@@ -235,7 +242,7 @@ fn tensor_ui(
 }
 
 fn texture_size(colormapped_texture: &ColormappedTexture) -> Vec2 {
-    let [w, h] = colormapped_texture.texture.width_height();
+    let [w, h] = colormapped_texture.width_height();
     egui::vec2(w as f32, h as f32)
 }
 
@@ -364,6 +371,11 @@ pub fn tensor_summary_ui_grid_contents(
             ));
             ui.end_row();
         }
+        TensorBuffer::Nv12(_) => {
+            re_ui.grid_left_hand_label(ui, "Encoding");
+            ui.label("NV12");
+            ui.end_row();
+        }
     }
 
     let TensorStats {
@@ -383,8 +395,9 @@ pub fn tensor_summary_ui_grid_contents(
     }
     // Show finite range only if it is different from the actual range.
     if let (true, Some((min, max))) = (range != finite_range, finite_range) {
-        ui.label("Finite data range")
-            .on_hover_text("The finite values (ignoring all NaN & -Inf/+Inf) of the tensor range within these bounds");
+        ui.label("Finite data range").on_hover_text(
+            "The finite values (ignoring all NaN & -Inf/+Inf) of the tensor range within these bounds"
+        );
         ui.monospace(format!(
             "[{} - {}]",
             re_format::format_f64(*min),
@@ -421,9 +434,9 @@ pub fn tensor_summary_ui(
 #[allow(clippy::too_many_arguments)]
 fn show_zoomed_image_region_tooltip(
     render_ctx: &mut re_renderer::RenderContext,
-    parent_ui: &mut egui::Ui,
+    parent_ui: &egui::Ui,
     response: egui::Response,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
     annotations: &Annotations,
@@ -443,8 +456,8 @@ fn show_zoomed_image_region_tooltip(
                     use egui::remap_clamp;
 
                     let center_texel = [
-                        (remap_clamp(pointer_pos.x, image_rect.x_range(), 0.0..=w as f32) as isize),
-                        (remap_clamp(pointer_pos.y, image_rect.y_range(), 0.0..=h as f32) as isize),
+                        remap_clamp(pointer_pos.x, image_rect.x_range(), 0.0..=w as f32) as isize,
+                        remap_clamp(pointer_pos.y, image_rect.y_range(), 0.0..=h as f32) as isize,
                     ];
                     show_zoomed_image_region_area_outline(
                         parent_ui.ctx(),
@@ -456,7 +469,7 @@ fn show_zoomed_image_region_tooltip(
                     show_zoomed_image_region(
                         render_ctx,
                         ui,
-                        tensor_path_hash,
+                        tensor_data_row_id,
                         tensor,
                         tensor_stats,
                         annotations,
@@ -512,7 +525,7 @@ pub fn show_zoomed_image_region_area_outline(
 pub fn show_zoomed_image_region(
     render_ctx: &mut re_renderer::RenderContext,
     ui: &mut egui::Ui,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
     annotations: &Annotations,
@@ -524,7 +537,7 @@ pub fn show_zoomed_image_region(
     if let Err(err) = try_show_zoomed_image_region(
         render_ctx,
         ui,
-        tensor_path_hash,
+        tensor_data_row_id,
         tensor,
         tensor_stats,
         annotations,
@@ -542,7 +555,7 @@ pub fn show_zoomed_image_region(
 fn try_show_zoomed_image_region(
     render_ctx: &mut re_renderer::RenderContext,
     ui: &mut egui::Ui,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
     annotations: &Annotations,
@@ -558,7 +571,7 @@ fn try_show_zoomed_image_region(
     let texture = gpu_bridge::tensor_to_gpu(
         render_ctx,
         debug_name,
-        tensor_path_hash,
+        tensor_data_row_id,
         tensor,
         meaning,
         tensor_stats,
@@ -566,7 +579,7 @@ fn try_show_zoomed_image_region(
     )?;
 
     const POINTS_PER_TEXEL: f32 = 5.0;
-    let size = Vec2::splat((ZOOMED_IMAGE_TEXEL_RADIUS * 2 + 1) as f32 * POINTS_PER_TEXEL);
+    let size = Vec2::splat(((ZOOMED_IMAGE_TEXEL_RADIUS * 2 + 1) as f32) * POINTS_PER_TEXEL);
 
     let (_id, zoom_rect) = ui.allocate_space(size);
     let painter = ui.painter();
@@ -578,7 +591,10 @@ fn try_show_zoomed_image_region(
         let image_rect_on_screen = egui::Rect::from_min_size(
             zoom_rect.center()
                 - POINTS_PER_TEXEL
-                    * egui::vec2(center_texel[0] as f32 + 0.5, center_texel[1] as f32 + 0.5),
+                    * egui::vec2(
+                        (center_texel[0] as f32) + 0.5,
+                        (center_texel[1] as f32) + 0.5,
+                    ),
             POINTS_PER_TEXEL * egui::vec2(width as f32, height as f32),
         );
 
@@ -614,7 +630,11 @@ fn try_show_zoomed_image_region(
             let zoom = rect.width();
             let image_rect_on_screen = egui::Rect::from_min_size(
                 rect.center()
-                    - zoom * egui::vec2(center_texel[0] as f32 + 0.5, center_texel[1] as f32 + 0.5),
+                    - zoom
+                        * egui::vec2(
+                            (center_texel[0] as f32) + 0.5,
+                            (center_texel[1] as f32) + 0.5,
+                        ),
                 zoom * egui::vec2(width as f32, height as f32),
             );
             gpu_bridge::render_image(
@@ -665,7 +685,7 @@ fn tensor_pixel_value_ui(
             // This is a depth map
             if let Some(raw_value) = tensor.get(&[y, x]) {
                 let raw_value = raw_value.as_f64();
-                let meters = raw_value / meter as f64;
+                let meters = raw_value / (meter as f64);
                 ui.label("Depth:");
                 if meters < 1.0 {
                     ui.monospace(format!("{:.1} mm", meters * 1e3));
@@ -683,11 +703,20 @@ fn tensor_pixel_value_ui(
                 .map(|v| format!("Val: {v}")),
             3 => {
                 // TODO(jleibs): Track RGB ordering somehow -- don't just assume it
-                if let (Some(r), Some(g), Some(b)) = (
-                    tensor.get_with_image_coords(x, y, 0),
-                    tensor.get_with_image_coords(x, y, 1),
-                    tensor.get_with_image_coords(x, y, 2),
-                ) {
+                if let Some([r, g, b]) = match &tensor.buffer {
+                    TensorBuffer::Nv12(_) => tensor.get_nv12_pixel(x, y),
+                    _ => {
+                        if let [Some(r), Some(g), Some(b)] = [
+                            tensor.get_with_image_coords(x, y, 0),
+                            tensor.get_with_image_coords(x, y, 1),
+                            tensor.get_with_image_coords(x, y, 2),
+                        ] {
+                            Some([r, g, b])
+                        } else {
+                            None
+                        }
+                    }
+                } {
                     match (r, g, b) {
                         (TensorElement::U8(r), TensorElement::U8(g), TensorElement::U8(b)) => {
                             Some(format!("R: {r}, G: {g}, B: {b}, #{r:02X}{g:02X}{b:02X}"))

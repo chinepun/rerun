@@ -20,8 +20,6 @@ include = [
   "web_viewer/favicon.svg",
   "web_viewer/index_bundled.html",
   "web_viewer/re_viewer_bg.wasm",
-  "web_viewer/re_viewer_debug_bg.wasm",
-  "web_viewer/re_viewer_debug.js",
   "web_viewer/re_viewer.js",
   "web_viewer/sw.js",
 ]
@@ -36,7 +34,10 @@ all-features = true
 ##
 ## When set: will skip building the Web Viewer Wasm.
 ## This makes the CI much faster, but the resulting web server
-## will crash if you rey to run it!
+## will crash if you try to run it!
+##
+## BONUS: If you configure rust-analyzer to use `--all-features,
+## you will also have rust-analyzer opting-out of building wasm!
 __ci = []
 
 ## Enable telemetry using our analytics SDK.

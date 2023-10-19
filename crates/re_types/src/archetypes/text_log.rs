@@ -14,23 +14,25 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// A log entry in a text log, comprised of a text body and its log level.
+use ::re_types_core::external::arrow2;
+
+/// **Archetype**: A log entry in a text log, comprised of a text body and its log level.
 ///
 /// ## Example
 ///
+/// ### `text_log_integration`:
 /// ```ignore
-/// //! Shows integration of Rerun's `TextLog` with the native logging interface.
-///
-/// use rerun::{archetypes::TextLog, components::TextLogLevel, external::log, RecordingStreamBuilder};
+/// use rerun::external::log;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_text_log_integration").memory()?;
+///         rerun::RecordingStreamBuilder::new("rerun_example_text_log_integration").memory()?;
 ///
 ///     // Log a text entry directly:
 ///     rec.log(
 ///         "logs",
-///         &TextLog::new("this entry has loglevel TRACE").with_level(TextLogLevel::TRACE),
+///         &rerun::TextLog::new("this entry has loglevel TRACE")
+///             .with_level(rerun::TextLogLevel::TRACE),
 ///     )?;
 ///
 ///     // Or log via a logging handler:
@@ -45,24 +47,33 @@
 ///     Ok(())
 /// }
 /// ```
+/// <center>
 /// <picture>
 ///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/480w.png">
 ///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/768w.png">
 ///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/1024w.png">
 ///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/1200w.png">
-///   <img src="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/full.png">
+///   <img src="https://static.rerun.io/text_log_integration/9737d0c986325802a9885499d6fcc773b1736488/full.png" width="640">
 /// </picture>
+/// </center>
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextLog {
+    /// The body of the message.
     pub text: crate::components::Text,
+
+    /// The verbosity level of the message.
+    ///
+    /// This can be used to filter the log messages in the Rerun Viewer.
     pub level: Option<crate::components::TextLogLevel>,
+
+    /// Optional color to use for the log line in the Rerun Viewer.
     pub color: Option<crate::components::Color>,
 }
 
-static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.Text".into()]);
 
-static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]> =
+static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 2usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.TextLogIndicator".into(),
@@ -70,10 +81,10 @@ static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usi
         ]
     });
 
-static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.InstanceKey".into()]);
 
-static ALL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 4usize]> =
+static ALL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 4usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.Text".into(),
@@ -87,51 +98,49 @@ impl TextLog {
     pub const NUM_COMPONENTS: usize = 4usize;
 }
 
-/// Indicator component for the [`TextLog`] [`crate::Archetype`]
-pub type TextLogIndicator = crate::GenericIndicatorComponent<TextLog>;
+/// Indicator component for the [`TextLog`] [`::re_types_core::Archetype`]
+pub type TextLogIndicator = ::re_types_core::GenericIndicatorComponent<TextLog>;
 
-impl crate::Archetype for TextLog {
+impl ::re_types_core::Archetype for TextLog {
     type Indicator = TextLogIndicator;
 
     #[inline]
-    fn name() -> crate::ArchetypeName {
+    fn name() -> ::re_types_core::ArchetypeName {
         "rerun.archetypes.TextLog".into()
     }
 
     #[inline]
-    fn indicator() -> crate::MaybeOwnedComponentBatch<'static> {
+    fn indicator() -> ::re_types_core::MaybeOwnedComponentBatch<'static> {
         static INDICATOR: TextLogIndicator = TextLogIndicator::DEFAULT;
-        crate::MaybeOwnedComponentBatch::Ref(&INDICATOR)
+        ::re_types_core::MaybeOwnedComponentBatch::Ref(&INDICATOR)
     }
 
     #[inline]
-    fn required_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn required_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         REQUIRED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn recommended_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn recommended_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         RECOMMENDED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn optional_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn optional_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         OPTIONAL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn all_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn all_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         ALL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
     fn from_arrow(
-        arrow_data: impl IntoIterator<
-            Item = (::arrow2::datatypes::Field, Box<dyn ::arrow2::array::Array>),
-        >,
-    ) -> crate::DeserializationResult<Self> {
+        arrow_data: impl IntoIterator<Item = (arrow2::datatypes::Field, Box<dyn arrow2::array::Array>)>,
+    ) -> ::re_types_core::DeserializationResult<Self> {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
         let arrays_by_name: ::std::collections::HashMap<_, _> = arrow_data
             .into_iter()
             .map(|(field, array)| (field.name, array))
@@ -139,14 +148,14 @@ impl crate::Archetype for TextLog {
         let text = {
             let array = arrays_by_name
                 .get("rerun.components.Text")
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.TextLog#text")?;
             <crate::components::Text>::from_arrow_opt(&**array)
                 .with_context("rerun.archetypes.TextLog#text")?
                 .into_iter()
                 .next()
                 .flatten()
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.TextLog#text")?
         };
         let level = if let Some(array) = arrays_by_name.get("rerun.components.TextLogLevel") {
@@ -156,7 +165,7 @@ impl crate::Archetype for TextLog {
                     .into_iter()
                     .next()
                     .flatten()
-                    .ok_or_else(crate::DeserializationError::missing_data)
+                    .ok_or_else(::re_types_core::DeserializationError::missing_data)
                     .with_context("rerun.archetypes.TextLog#level")?
             })
         } else {
@@ -169,7 +178,7 @@ impl crate::Archetype for TextLog {
                     .into_iter()
                     .next()
                     .flatten()
-                    .ok_or_else(crate::DeserializationError::missing_data)
+                    .ok_or_else(::re_types_core::DeserializationError::missing_data)
                     .with_context("rerun.archetypes.TextLog#color")?
             })
         } else {
@@ -179,19 +188,19 @@ impl crate::Archetype for TextLog {
     }
 }
 
-impl crate::AsComponents for TextLog {
-    fn as_component_batches(&self) -> Vec<crate::MaybeOwnedComponentBatch<'_>> {
+impl ::re_types_core::AsComponents for TextLog {
+    fn as_component_batches(&self) -> Vec<::re_types_core::MaybeOwnedComponentBatch<'_>> {
         re_tracing::profile_function!();
-        use crate::Archetype as _;
+        use ::re_types_core::Archetype as _;
         [
             Some(Self::indicator()),
-            Some((&self.text as &dyn crate::ComponentBatch).into()),
+            Some((&self.text as &dyn ::re_types_core::ComponentBatch).into()),
             self.level
                 .as_ref()
-                .map(|comp| (comp as &dyn crate::ComponentBatch).into()),
+                .map(|comp| (comp as &dyn ::re_types_core::ComponentBatch).into()),
             self.color
                 .as_ref()
-                .map(|comp| (comp as &dyn crate::ComponentBatch).into()),
+                .map(|comp| (comp as &dyn ::re_types_core::ComponentBatch).into()),
         ]
         .into_iter()
         .flatten()

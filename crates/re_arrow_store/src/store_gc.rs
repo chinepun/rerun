@@ -1,8 +1,8 @@
 use ahash::{HashMap, HashSet};
 
 use nohash_hasher::IntMap;
-use re_log_types::{EntityPathHash, RowId, SizeBytes as _, TimeInt, TimeRange, Timeline};
-use re_types::ComponentName;
+use re_log_types::{EntityPathHash, RowId, TimeInt, TimeRange, Timeline};
+use re_types_core::{ComponentName, SizeBytes as _};
 
 use crate::{
     store::{IndexedBucketInner, IndexedTable, PersistentIndexedTable},
@@ -210,7 +210,7 @@ impl DataStore {
         let mut deleted = Deleted::default();
 
         // The algorithm is straightforward:
-        // 1. Find the the oldest `RowId` that is not protected
+        // 1. Find the oldest `RowId` that is not protected
         // 2. Find all tables that potentially hold data associated with that `RowId`
         // 3. Drop the associated row and account for the space we got back
 

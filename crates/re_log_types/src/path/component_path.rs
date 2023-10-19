@@ -1,4 +1,6 @@
-use crate::{path::EntityPath, ComponentName};
+use re_types_core::ComponentName;
+
+use crate::path::EntityPath;
 
 /// A [`EntityPath`] plus a [`ComponentName`].
 ///
@@ -30,5 +32,14 @@ impl ComponentPath {
     #[inline]
     pub fn component_name(&self) -> &ComponentName {
         &self.component_name
+    }
+}
+
+impl std::fmt::Display for ComponentPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.entity_path.fmt(f)?;
+        f.write_str(".")?;
+        self.component_name.fmt(f)?;
+        Ok(())
     }
 }

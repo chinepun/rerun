@@ -181,6 +181,7 @@ impl ViewerAnalytics {
                     re_log_types::FileSource::DragAndDrop => "file_drag_and_drop".to_owned(),
                     re_log_types::FileSource::FileDialog => "file_dialog".to_owned(),
                 },
+                StoreSource::Viewer => "viewer".to_owned(),
                 StoreSource::Other(other) => other.clone(),
             };
 
@@ -200,8 +201,8 @@ impl ViewerAnalytics {
                     rustc_version,
                     llvm_version,
                 } => {
-                    self.register("rust_version", rustc_version.to_string()); // Rust/LLVM version of the the code compiling the Rust SDK
-                    self.register("llvm_version", llvm_version.to_string()); // Rust/LLVM version of the the code compiling the Rust SDK
+                    self.register("rust_version", rustc_version.to_string()); // Rust/LLVM version of the code compiling the Rust SDK
+                    self.register("llvm_version", llvm_version.to_string()); // Rust/LLVM version of the code compiling the Rust SDK
                     self.deregister("python_version"); // can't be both!
                 }
                 StoreSource::PythonSdk(version) => {
@@ -210,7 +211,7 @@ impl ViewerAnalytics {
                     self.deregister("llvm_version"); // can't be both!
                 }
                 StoreSource::CSdk => {} // TODO(andreas): Send version and set it.
-                StoreSource::Unknown | StoreSource::Other(_) => {}
+                StoreSource::Unknown | StoreSource::Viewer | StoreSource::Other(_) => {}
             }
 
             self.register("store_source", store_source);

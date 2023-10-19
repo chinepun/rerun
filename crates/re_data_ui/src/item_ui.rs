@@ -239,7 +239,12 @@ pub fn time_button(
 ) -> egui::Response {
     let is_selected = ctx.rec_cfg.time_ctrl.is_time_selected(timeline, value);
 
-    let response = ui.selectable_label(is_selected, timeline.typ().format(value));
+    let response = ui.selectable_label(
+        is_selected,
+        timeline
+            .typ()
+            .format(value, ctx.app_options.time_zone_for_timestamps),
+    );
     if response.clicked() {
         ctx.rec_cfg
             .time_ctrl
@@ -337,7 +342,7 @@ pub fn instance_hover_card_ui(
     let query = ctx.current_query();
 
     if instance_path.instance_key.is_splat() {
-        let store = &ctx.store_db.entity_db.data_store;
+        let store = ctx.store_db.store();
         let stats = store.entity_stats(query.timeline, instance_path.entity_path.hash());
         entity_stats_ui(ui, &query.timeline, &stats);
     } else {

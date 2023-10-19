@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "../arrow.hpp"
 #include "../component_batch.hpp"
 #include "../components/transform3d.hpp"
 #include "../data_cell.hpp"
+#include "../indicator_component.hpp"
 #include "../result.hpp"
 
 #include <cstdint>
@@ -15,38 +15,36 @@
 
 namespace rerun {
     namespace archetypes {
-        /// A 3D transform.
+        /// **Archetype**: A 3D transform.
         ///
         /// ## Example
         ///
+        /// ### Variety of 3D transforms
         /// ```cpp,ignore
-        /// // Log some transforms.
-        ///
         /// #include <rerun.hpp>
         ///
         /// #include <cmath>
         ///
-        /// namespace rr = rerun;
-        /// namespace rrd = rr::datatypes;
+        /// namespace rrd = rerun::datatypes;
         ///
-        /// const float pi = static_cast<float>(M_PI);
+        /// const float TAU = static_cast<float>(2.0 * M_PI);
         ///
         /// int main() {
-        ///     auto rec = rr::RecordingStream("rerun_example_transform3d");
+        ///     auto rec = rerun::RecordingStream("rerun_example_transform3d");
         ///     rec.connect("127.0.0.1:9876").throw_on_failure();
         ///
-        ///     auto arrow = rr::Arrows3D::from_vectors({0.0f, 1.0f, 0.0f}).with_origins({0.0f,
-        ///     0.0f, 0.0f});
+        ///     auto arrow =
+        ///         rerun::Arrows3D::from_vectors({{0.0f, 1.0f, 0.0f}}).with_origins({{0.0f, 0.0f, 0.0f}});
         ///
         ///     rec.log("base", arrow);
         ///
-        ///     rec.log("base/translated", rr::Transform3D({1.0f, 0.0f, 0.0f}));
+        ///     rec.log("base/translated", rerun::Transform3D({1.0f, 0.0f, 0.0f}));
         ///     rec.log("base/translated", arrow);
         ///
         ///     rec.log(
         ///         "base/rotated_scaled",
-        ///         rr::Transform3D(
-        ///             rrd::RotationAxisAngle({0.0f, 0.0f, 1.0f}, rrd::Angle::radians(pi / 4.0f)),
+        ///         rerun::Transform3D(
+        ///             rrd::RotationAxisAngle({0.0f, 0.0f, 1.0f}, rrd::Angle::radians(TAU / 8.0f)),
         ///             2.0f
         ///         )
         ///     );
@@ -57,9 +55,10 @@ namespace rerun {
             /// The transform
             rerun::components::Transform3D transform;
 
-            /// Name of the indicator component, used to identify the archetype when converting to a
-            /// list of components.
+            /// Name of the indicator component, used to identify the archetype when converting to a list of components.
             static const char INDICATOR_COMPONENT_NAME[];
+            /// Indicator component, used to identify the archetype when converting to a list of components.
+            using IndicatorComponent = components::IndicatorComponent<INDICATOR_COMPONENT_NAME>;
 
           public:
             // Extensions to generated type defined in 'transform3d_ext.cpp'
@@ -102,7 +101,7 @@ namespace rerun {
             /// where the transform was logged. Otherwise, the transform maps from the space to its
             /// parent.
             Transform3D(const datatypes::Vec3D& translation, bool from_parent = false)
-                : Transform3D(datatypes::TranslationAndMat3x3(translation, from_parent)) {}
+                : Transform3D(datatypes::TranslationRotationScale3D(translation, from_parent)) {}
 
             /// From 3x3 matrix only.
             ///
@@ -240,25 +239,27 @@ namespace rerun {
 
           public:
             Transform3D() = default;
+            Transform3D(Transform3D&& other) = default;
 
-            Transform3D(rerun::components::Transform3D _transform)
+            explicit Transform3D(rerun::components::Transform3D _transform)
                 : transform(std::move(_transform)) {}
 
             /// Returns the number of primary instances of this archetype.
             size_t num_instances() const {
                 return 1;
             }
-
-            /// Creates an `AnonymousComponentBatch` out of the associated indicator component. This
-            /// allows for associating arbitrary indicator components with arbitrary data. Check out
-            /// the `manual_indicator` API example to see what's possible.
-            static AnonymousComponentBatch indicator();
-
-            /// Collections all component lists into a list of component collections. *Attention:*
-            /// The returned vector references this instance and does not take ownership of any
-            /// data. Adding any new components to this archetype will invalidate the returned
-            /// component lists!
-            std::vector<AnonymousComponentBatch> as_component_batches() const;
         };
+
     } // namespace archetypes
+
+    template <typename T>
+    struct AsComponents;
+
+    template <>
+    struct AsComponents<archetypes::Transform3D> {
+        /// Serialize all set component batches.
+        static Result<std::vector<SerializedComponentBatch>> serialize(
+            const archetypes::Transform3D& archetype
+        );
+    };
 } // namespace rerun

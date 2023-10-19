@@ -14,6 +14,8 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
+use ::re_types_core::external::arrow2;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AffixFuzzer4(pub Option<crate::testing::datatypes::AffixFuzzer1>);
 
@@ -53,8 +55,8 @@ impl<'a> From<&'a AffixFuzzer4> for ::std::borrow::Cow<'a, AffixFuzzer4> {
     }
 }
 
-impl crate::Loggable for AffixFuzzer4 {
-    type Name = crate::ComponentName;
+impl ::re_types_core::Loggable for AffixFuzzer4 {
+    type Name = ::re_types_core::ComponentName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -64,7 +66,7 @@ impl crate::Loggable for AffixFuzzer4 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::Struct(vec![
             Field {
                 name: "single_float_optional".to_owned(),
@@ -141,13 +143,13 @@ impl crate::Loggable for AffixFuzzer4 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data0): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -162,7 +164,7 @@ impl crate::Loggable for AffixFuzzer4 {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let data0_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let data0_bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -175,21 +177,21 @@ impl crate::Loggable for AffixFuzzer4 {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok(
             crate::testing::datatypes::AffixFuzzer1::from_arrow_opt(arrow_data)
                 .with_context("rerun.testing.components.AffixFuzzer4#single_optional")?
                 .into_iter()
                 .map(Ok)
                 .map(|res| res.map(|v| Some(Self(v))))
-                .collect::<crate::DeserializationResult<Vec<Option<_>>>>()
+                .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()
                 .with_context("rerun.testing.components.AffixFuzzer4#single_optional")
                 .with_context("rerun.testing.components.AffixFuzzer4")?,
         )

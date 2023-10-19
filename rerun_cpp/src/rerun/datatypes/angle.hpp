@@ -20,9 +20,7 @@ namespace rerun {
     namespace datatypes {
         namespace detail {
             enum class AngleTag : uint8_t {
-                /// Having a special empty state makes it possible to implement move-semantics. We
-                /// need to be able to leave the object in a state which we can run the destructor
-                /// on.
+                /// Having a special empty state makes it possible to implement move-semantics. We need to be able to leave the object in a state which we can run the destructor on.
                 NONE = 0,
                 Radians,
                 Degrees,
@@ -37,12 +35,11 @@ namespace rerun {
 
                 ~AngleData() {}
 
-                void swap(AngleData &other) noexcept {
-                    // This bitwise swap would fail for self-referential types, but we don't have
-                    // any of those.
+                void swap(AngleData& other) noexcept {
+                    // This bitwise swap would fail for self-referential types, but we don't have any of those.
                     char temp[sizeof(AngleData)];
-                    void *otherbytes = reinterpret_cast<void *>(&other);
-                    void *thisbytes = reinterpret_cast<void *>(this);
+                    void* otherbytes = reinterpret_cast<void*>(&other);
+                    void* thisbytes = reinterpret_cast<void*>(this);
                     std::memcpy(temp, thisbytes, sizeof(AngleData));
                     std::memcpy(thisbytes, otherbytes, sizeof(AngleData));
                     std::memcpy(otherbytes, temp, sizeof(AngleData));
@@ -50,35 +47,34 @@ namespace rerun {
             };
         } // namespace detail
 
-        /// Angle in either radians or degrees.
+        /// **Datatype**: Angle in either radians or degrees.
         struct Angle {
             Angle() : _tag(detail::AngleTag::NONE) {}
 
-            Angle(const Angle &other) : _tag(other._tag) {
-                const void *otherbytes = reinterpret_cast<const void *>(&other._data);
-                void *thisbytes = reinterpret_cast<void *>(&this->_data);
+            /// Copy constructor
+            Angle(const Angle& other) : _tag(other._tag) {
+                const void* otherbytes = reinterpret_cast<const void*>(&other._data);
+                void* thisbytes = reinterpret_cast<void*>(&this->_data);
                 std::memcpy(thisbytes, otherbytes, sizeof(detail::AngleData));
             }
 
-            Angle &operator=(const Angle &other) noexcept {
+            Angle& operator=(const Angle& other) noexcept {
                 Angle tmp(other);
                 this->swap(tmp);
                 return *this;
             }
 
-            Angle(Angle &&other) noexcept : _tag(detail::AngleTag::NONE) {
+            Angle(Angle&& other) noexcept : Angle() {
                 this->swap(other);
             }
 
-            Angle &operator=(Angle &&other) noexcept {
+            Angle& operator=(Angle&& other) noexcept {
                 this->swap(other);
                 return *this;
             }
 
-            void swap(Angle &other) noexcept {
-                auto tag_temp = this->_tag;
-                this->_tag = other._tag;
-                other._tag = tag_temp;
+            void swap(Angle& other) noexcept {
+                std::swap(this->_tag, other._tag);
                 this->_data.swap(other._data);
             }
 
@@ -97,16 +93,16 @@ namespace rerun {
             }
 
             /// Returns the arrow data type this type corresponds to.
-            static const std::shared_ptr<arrow::DataType> &arrow_datatype();
+            static const std::shared_ptr<arrow::DataType>& arrow_datatype();
 
             /// Creates a new array builder with an array of this type.
             static Result<std::shared_ptr<arrow::DenseUnionBuilder>> new_arrow_array_builder(
-                arrow::MemoryPool *memory_pool
+                arrow::MemoryPool* memory_pool
             );
 
             /// Fills an arrow array builder with an array of this type.
             static Error fill_arrow_array_builder(
-                arrow::DenseUnionBuilder *builder, const Angle *elements, size_t num_elements
+                arrow::DenseUnionBuilder* builder, const Angle* elements, size_t num_elements
             );
 
           private:

@@ -1,9 +1,10 @@
 use ahash::HashSetExt;
 use nohash_hasher::IntSet;
-use re_types::ComponentName;
 use smallvec::SmallVec;
 
-use crate::{DataCell, DataCellError, DataTable, EntityPath, SizeBytes, TableId, TimePoint};
+use re_types_core::{AsComponents, ComponentName, SizeBytes};
+
+use crate::{DataCell, DataCellError, DataTable, EntityPath, TableId, TimePoint};
 
 // ---
 
@@ -106,21 +107,8 @@ impl SizeBytes for DataCellRow {
 // ---
 
 /// A unique ID for a [`DataRow`].
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    arrow2_convert::ArrowField,
-    arrow2_convert::ArrowSerialize,
-    arrow2_convert::ArrowDeserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[arrow_field(transparent)]
 pub struct RowId(pub(crate) re_tuid::Tuid);
 
 impl std::fmt::Display for RowId {
@@ -169,6 +157,8 @@ impl std::ops::DerefMut for RowId {
         &mut self.0
     }
 }
+
+re_tuid::delegate_arrow_tuid!(RowId as "rerun.controls.RowId");
 
 /// A row's worth of data, i.e. an event: a list of [`DataCell`]s associated with an auto-generated
 /// `RowId`, a user-specified [`TimePoint`] and [`EntityPath`], and an expected number of
@@ -266,6 +256,48 @@ pub struct DataRow {
 }
 
 impl DataRow {
+    /// Builds a new `DataRow` from anything implementing [`AsComponents`].
+    pub fn from_archetype(
+        row_id: RowId,
+        timepoint: TimePoint,
+        entity_path: EntityPath,
+        as_components: &dyn AsComponents,
+    ) -> anyhow::Result<Self> {
+        re_tracing::profile_function!();
+
+        let batches = as_components.as_component_batches();
+        Self::from_component_batches(
+            row_id,
+            timepoint,
+            entity_path,
+            batches.iter().map(|batch| batch.as_ref()),
+        )
+    }
+
+    /// Builds a new `DataRow` from anything implementing [`AsComponents`].
+    pub fn from_component_batches<'a>(
+        row_id: RowId,
+        timepoint: TimePoint,
+        entity_path: EntityPath,
+        comp_batches: impl IntoIterator<Item = &'a dyn re_types_core::ComponentBatch>,
+    ) -> anyhow::Result<Self> {
+        re_tracing::profile_function!();
+
+        let data_cells = comp_batches
+            .into_iter()
+            .map(|batch| DataCell::from_component_batch(batch))
+            .collect::<Result<Vec<DataCell>, _>>()?;
+
+        // TODO(emilk): should `DataRow::from_cells` calculate `num_instances` instead?
+        let num_instances = data_cells.iter().map(|cell| cell.num_instances()).max();
+        let num_instances = num_instances.unwrap_or(0);
+
+        let mut row =
+            DataRow::from_cells(row_id, timepoint, entity_path, num_instances, data_cells)?;
+        row.compute_all_size_bytes();
+        Ok(row)
+    }
+
     /// Builds a new `DataRow` from an iterable of [`DataCell`]s.
     ///
     /// Fails if:
@@ -546,7 +578,12 @@ impl std::fmt::Display for DataRow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Row #{} @ '{}'", self.row_id, self.entity_path)?;
         for (timeline, time) in &self.timepoint {
-            writeln!(f, "- {}: {}", timeline.name(), timeline.typ().format(*time))?;
+            writeln!(
+                f,
+                "- {}: {}",
+                timeline.name(),
+                timeline.typ().format_utc(*time)
+            )?;
         }
 
         re_format::arrow::format_table(

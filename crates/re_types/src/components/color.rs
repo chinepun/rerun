@@ -14,32 +14,34 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// An RGBA color with unmultiplied/separate alpha, in sRGB gamma space with linear alpha.
+use ::re_types_core::external::arrow2;
+
+/// **Component**: An RGBA color with unmultiplied/separate alpha, in sRGB gamma space with linear alpha.
 ///
 /// The color is stored as a 32-bit integer, where the most significant
 /// byte is `R` and the least significant byte is `A`.
 #[derive(Clone, Debug, Copy, PartialEq, Eq, PartialOrd, Ord, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(transparent)]
-pub struct Color(pub crate::datatypes::Color);
+pub struct Color(pub crate::datatypes::Rgba32);
 
-impl<T: Into<crate::datatypes::Color>> From<T> for Color {
+impl<T: Into<crate::datatypes::Rgba32>> From<T> for Color {
     fn from(v: T) -> Self {
         Self(v.into())
     }
 }
 
-impl std::borrow::Borrow<crate::datatypes::Color> for Color {
+impl std::borrow::Borrow<crate::datatypes::Rgba32> for Color {
     #[inline]
-    fn borrow(&self) -> &crate::datatypes::Color {
+    fn borrow(&self) -> &crate::datatypes::Rgba32 {
         &self.0
     }
 }
 
 impl std::ops::Deref for Color {
-    type Target = crate::datatypes::Color;
+    type Target = crate::datatypes::Rgba32;
 
     #[inline]
-    fn deref(&self) -> &crate::datatypes::Color {
+    fn deref(&self) -> &crate::datatypes::Rgba32 {
         &self.0
     }
 }
@@ -58,8 +60,8 @@ impl<'a> From<&'a Color> for ::std::borrow::Cow<'a, Color> {
     }
 }
 
-impl crate::Loggable for Color {
-    type Name = crate::ComponentName;
+impl ::re_types_core::Loggable for Color {
+    type Name = ::re_types_core::ComponentName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -69,20 +71,20 @@ impl crate::Loggable for Color {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::UInt32
     }
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data0): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -95,7 +97,7 @@ impl crate::Loggable for Color {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let data0_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let data0_bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -106,7 +108,7 @@ impl crate::Loggable for Color {
                     .map(|datum| {
                         datum
                             .map(|datum| {
-                                let crate::datatypes::Color(data0) = datum;
+                                let crate::datatypes::Rgba32(data0) = datum;
                                 data0
                             })
                             .unwrap_or_default()
@@ -120,19 +122,19 @@ impl crate::Loggable for Color {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok(arrow_data
             .as_any()
             .downcast_ref::<UInt32Array>()
             .ok_or_else(|| {
-                crate::DeserializationError::datatype_mismatch(
+                ::re_types_core::DeserializationError::datatype_mismatch(
                     DataType::UInt32,
                     arrow_data.data_type().clone(),
                 )
@@ -140,10 +142,10 @@ impl crate::Loggable for Color {
             .with_context("rerun.components.Color#rgba")?
             .into_iter()
             .map(|opt| opt.copied())
-            .map(|res_or_opt| res_or_opt.map(|v| crate::datatypes::Color(v)))
-            .map(|v| v.ok_or_else(crate::DeserializationError::missing_data))
+            .map(|res_or_opt| res_or_opt.map(|v| crate::datatypes::Rgba32(v)))
+            .map(|v| v.ok_or_else(::re_types_core::DeserializationError::missing_data))
             .map(|res| res.map(|v| Some(Self(v))))
-            .collect::<crate::DeserializationResult<Vec<Option<_>>>>()
+            .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()
             .with_context("rerun.components.Color#rgba")
             .with_context("rerun.components.Color")?)
     }
@@ -151,17 +153,17 @@ impl crate::Loggable for Color {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn from_arrow(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Self>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Self>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         if let Some(validity) = arrow_data.validity() {
             if validity.unset_bits() != 0 {
-                return Err(crate::DeserializationError::missing_data());
+                return Err(::re_types_core::DeserializationError::missing_data());
             }
         }
         Ok({
@@ -169,7 +171,7 @@ impl crate::Loggable for Color {
                 .as_any()
                 .downcast_ref::<UInt32Array>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::UInt32,
                         arrow_data.data_type().clone(),
                     )
@@ -182,7 +184,7 @@ impl crate::Loggable for Color {
                 slice
                     .iter()
                     .copied()
-                    .map(|v| crate::datatypes::Color(v))
+                    .map(|v| crate::datatypes::Rgba32(v))
                     .map(|v| Self(v))
                     .collect::<Vec<_>>()
             }

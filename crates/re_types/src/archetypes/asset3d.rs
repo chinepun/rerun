@@ -14,84 +14,43 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// A prepacked 3D asset (`.gltf`, `.glb`, `.obj`, etc).
+use ::re_types_core::external::arrow2;
+
+/// **Archetype**: A prepacked 3D asset (`.gltf`, `.glb`, `.obj`, etc.).
 ///
-/// ## Examples
+/// See also [`Mesh3D`][crate::archetypes::Mesh3D].
+///
+/// ## Example
 ///
 /// ### Simple 3D asset
 /// ```ignore
-/// //! Log a simple 3D asset.
+/// use rerun::external::anyhow;
 ///
-/// use rerun::{
-///     archetypes::{Asset3D, ViewCoordinates},
-///     external::anyhow,
-///     RecordingStreamBuilder,
-/// };
-///
-/// fn main() -> Result<(), anyhow::Error> {
+/// fn main() -> anyhow::Result<()> {
 ///     let args = std::env::args().collect::<Vec<_>>();
 ///     let Some(path) = args.get(1) else {
-///         anyhow::bail!("Usage: {} <path_to_asset.[gltf|glb]>", args[0]);
-///     };
-///
-///     let (rec, storage) = RecordingStreamBuilder::new("rerun_example_asset3d_simple").memory()?;
-///
-///     rec.log_timeless("world", &ViewCoordinates::RIGHT_HAND_Z_UP)?; // Set an up-axis
-///     rec.log("world/asset", &Asset3D::from_file(path)?)?;
-///
-///     rerun::native_viewer::show(storage.take())?;
-///     Ok(())
-/// }
-/// ```
-///
-/// ### 3D asset with out-of-tree transform
-/// ```ignore
-/// //! Log a simple 3D asset with an out-of-tree transform which will not affect its children.
-///
-/// use rerun::{
-///     archetypes::{Asset3D, Points3D, ViewCoordinates},
-///     components::OutOfTreeTransform3D,
-///     datatypes::TranslationRotationScale3D,
-///     demo_util::grid,
-///     external::{anyhow, glam},
-///     RecordingStreamBuilder,
-/// };
-///
-/// fn main() -> Result<(), anyhow::Error> {
-///     let args = std::env::args().collect::<Vec<_>>();
-///     let Some(path) = args.get(1) else {
-///         anyhow::bail!("Usage: {} <path_to_asset.[gltf|glb]>", args[0]);
+///         anyhow::bail!("Usage: {} <path_to_asset.[gltf|glb|obj]>", args[0]);
 ///     };
 ///
 ///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_asset3d_out_of_tree").memory()?;
+///         rerun::RecordingStreamBuilder::new("rerun_example_asset3d_simple").memory()?;
 ///
-///     rec.log_timeless("world", &ViewCoordinates::RIGHT_HAND_Z_UP)?; // Set an up-axis
-///
-///     rec.set_time_sequence("frame", 0);
-///     rec.log("world/asset", &Asset3D::from_file(path)?)?;
-///     // Those points will not be affected by their parent's out-of-tree transform!
-///     rec.log(
-///         "world/asset/points",
-///         &Points3D::new(grid(glam::Vec3::splat(-10.0), glam::Vec3::splat(10.0), 10)),
-///     )?;
-///
-///     for i in 1..20 {
-///         rec.set_time_sequence("frame", i);
-///
-///         // Modify the asset's out-of-tree transform: this will not affect its children (i.e. the points)!
-///         let translation = TranslationRotationScale3D::translation([0.0, 0.0, i as f32 - 10.0]);
-///         rec.log_component_batches(
-///             "world/asset",
-///             false,
-///             [&OutOfTreeTransform3D::from(translation) as _],
-///         )?;
-///     }
+///     rec.log_timeless("world", &rerun::ViewCoordinates::RIGHT_HAND_Z_UP)?; // Set an up-axis
+///     rec.log("world/asset", &rerun::Asset3D::from_file(path)?)?;
 ///
 ///     rerun::native_viewer::show(storage.take())?;
 ///     Ok(())
 /// }
 /// ```
+/// <center>
+/// <picture>
+///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/asset3d_simple/af238578188d3fd0de3e330212120e2842a8ddb2/480w.png">
+///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/asset3d_simple/af238578188d3fd0de3e330212120e2842a8ddb2/768w.png">
+///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/asset3d_simple/af238578188d3fd0de3e330212120e2842a8ddb2/1024w.png">
+///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/asset3d_simple/af238578188d3fd0de3e330212120e2842a8ddb2/1200w.png">
+///   <img src="https://static.rerun.io/asset3d_simple/af238578188d3fd0de3e330212120e2842a8ddb2/full.png" width="640">
+/// </picture>
+/// </center>
 #[derive(Clone, Debug, PartialEq)]
 pub struct Asset3D {
     /// The asset's bytes.
@@ -99,9 +58,9 @@ pub struct Asset3D {
 
     /// The Media Type of the asset.
     ///
-    /// For instance:
+    /// Supported values:
     /// * `model/gltf-binary`
-    /// * `model/obj`
+    /// * `model/obj` (.mtl material files are not supported yet, references are silently ignored)
     ///
     /// If omitted, the viewer will try to guess from the data blob.
     /// If it cannot guess, it won't be able to render the asset.
@@ -113,10 +72,10 @@ pub struct Asset3D {
     pub transform: Option<crate::components::OutOfTreeTransform3D>,
 }
 
-static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.Blob".into()]);
 
-static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]> =
+static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 2usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.Asset3DIndicator".into(),
@@ -124,7 +83,7 @@ static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usi
         ]
     });
 
-static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]> =
+static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 2usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.InstanceKey".into(),
@@ -132,7 +91,7 @@ static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]
         ]
     });
 
-static ALL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 5usize]> =
+static ALL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 5usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.Blob".into(),
@@ -147,51 +106,49 @@ impl Asset3D {
     pub const NUM_COMPONENTS: usize = 5usize;
 }
 
-/// Indicator component for the [`Asset3D`] [`crate::Archetype`]
-pub type Asset3DIndicator = crate::GenericIndicatorComponent<Asset3D>;
+/// Indicator component for the [`Asset3D`] [`::re_types_core::Archetype`]
+pub type Asset3DIndicator = ::re_types_core::GenericIndicatorComponent<Asset3D>;
 
-impl crate::Archetype for Asset3D {
+impl ::re_types_core::Archetype for Asset3D {
     type Indicator = Asset3DIndicator;
 
     #[inline]
-    fn name() -> crate::ArchetypeName {
+    fn name() -> ::re_types_core::ArchetypeName {
         "rerun.archetypes.Asset3D".into()
     }
 
     #[inline]
-    fn indicator() -> crate::MaybeOwnedComponentBatch<'static> {
+    fn indicator() -> ::re_types_core::MaybeOwnedComponentBatch<'static> {
         static INDICATOR: Asset3DIndicator = Asset3DIndicator::DEFAULT;
-        crate::MaybeOwnedComponentBatch::Ref(&INDICATOR)
+        ::re_types_core::MaybeOwnedComponentBatch::Ref(&INDICATOR)
     }
 
     #[inline]
-    fn required_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn required_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         REQUIRED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn recommended_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn recommended_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         RECOMMENDED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn optional_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn optional_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         OPTIONAL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn all_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn all_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         ALL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
     fn from_arrow(
-        arrow_data: impl IntoIterator<
-            Item = (::arrow2::datatypes::Field, Box<dyn ::arrow2::array::Array>),
-        >,
-    ) -> crate::DeserializationResult<Self> {
+        arrow_data: impl IntoIterator<Item = (arrow2::datatypes::Field, Box<dyn arrow2::array::Array>)>,
+    ) -> ::re_types_core::DeserializationResult<Self> {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
         let arrays_by_name: ::std::collections::HashMap<_, _> = arrow_data
             .into_iter()
             .map(|(field, array)| (field.name, array))
@@ -199,14 +156,14 @@ impl crate::Archetype for Asset3D {
         let blob = {
             let array = arrays_by_name
                 .get("rerun.components.Blob")
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.Asset3D#blob")?;
             <crate::components::Blob>::from_arrow_opt(&**array)
                 .with_context("rerun.archetypes.Asset3D#blob")?
                 .into_iter()
                 .next()
                 .flatten()
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.Asset3D#blob")?
         };
         let media_type = if let Some(array) = arrays_by_name.get("rerun.components.MediaType") {
@@ -216,7 +173,7 @@ impl crate::Archetype for Asset3D {
                     .into_iter()
                     .next()
                     .flatten()
-                    .ok_or_else(crate::DeserializationError::missing_data)
+                    .ok_or_else(::re_types_core::DeserializationError::missing_data)
                     .with_context("rerun.archetypes.Asset3D#media_type")?
             })
         } else {
@@ -230,7 +187,7 @@ impl crate::Archetype for Asset3D {
                         .into_iter()
                         .next()
                         .flatten()
-                        .ok_or_else(crate::DeserializationError::missing_data)
+                        .ok_or_else(::re_types_core::DeserializationError::missing_data)
                         .with_context("rerun.archetypes.Asset3D#transform")?
                 })
             } else {
@@ -244,19 +201,19 @@ impl crate::Archetype for Asset3D {
     }
 }
 
-impl crate::AsComponents for Asset3D {
-    fn as_component_batches(&self) -> Vec<crate::MaybeOwnedComponentBatch<'_>> {
+impl ::re_types_core::AsComponents for Asset3D {
+    fn as_component_batches(&self) -> Vec<::re_types_core::MaybeOwnedComponentBatch<'_>> {
         re_tracing::profile_function!();
-        use crate::Archetype as _;
+        use ::re_types_core::Archetype as _;
         [
             Some(Self::indicator()),
-            Some((&self.blob as &dyn crate::ComponentBatch).into()),
+            Some((&self.blob as &dyn ::re_types_core::ComponentBatch).into()),
             self.media_type
                 .as_ref()
-                .map(|comp| (comp as &dyn crate::ComponentBatch).into()),
+                .map(|comp| (comp as &dyn ::re_types_core::ComponentBatch).into()),
             self.transform
                 .as_ref()
-                .map(|comp| (comp as &dyn crate::ComponentBatch).into()),
+                .map(|comp| (comp as &dyn ::re_types_core::ComponentBatch).into()),
         ]
         .into_iter()
         .flatten()

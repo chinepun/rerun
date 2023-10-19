@@ -14,12 +14,17 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// A helper type for mapping class IDs to class descriptions.
+use ::re_types_core::external::arrow2;
+
+/// **Datatype**: A helper type for mapping class IDs to class descriptions.
 ///
 /// This is internal to the `AnnotationContext` structure.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ClassDescriptionMapElem {
+    /// The key: the class ID.
     pub class_id: crate::datatypes::ClassId,
+
+    /// The value: class name, color, etc.
     pub class_description: crate::datatypes::ClassDescription,
 }
 
@@ -37,8 +42,8 @@ impl<'a> From<&'a ClassDescriptionMapElem> for ::std::borrow::Cow<'a, ClassDescr
     }
 }
 
-impl crate::Loggable for ClassDescriptionMapElem {
-    type Name = crate::DatatypeName;
+impl ::re_types_core::Loggable for ClassDescriptionMapElem {
+    type Name = ::re_types_core::DatatypeName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -48,7 +53,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::Struct(vec![
             Field {
                 name: "class_id".to_owned(),
@@ -68,13 +73,13 @@ impl crate::Loggable for ClassDescriptionMapElem {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -83,7 +88,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -101,7 +106,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let class_id_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let class_id_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -135,7 +140,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let class_description_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let class_description_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -153,20 +158,20 @@ impl crate::Loggable for ClassDescriptionMapElem {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok({
             let arrow_data = arrow_data
                 .as_any()
-                .downcast_ref::<::arrow2::array::StructArray>()
+                .downcast_ref::<arrow2::array::StructArray>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::Struct(vec![
                             Field {
                                 name: "class_id".to_owned(),
@@ -197,7 +202,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                     .collect();
                 let class_id = {
                     if !arrays_by_name.contains_key("class_id") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "class_id",
                         ))
@@ -208,7 +213,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                         .as_any()
                         .downcast_ref::<UInt16Array>()
                         .ok_or_else(|| {
-                            crate::DeserializationError::datatype_mismatch(
+                            ::re_types_core::DeserializationError::datatype_mismatch(
                                 DataType::UInt16,
                                 arrow_data.data_type().clone(),
                             )
@@ -220,7 +225,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                 };
                 let class_description = {
                     if !arrays_by_name.contains_key("class_description") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "class_description",
                         ))
@@ -239,10 +244,10 @@ impl crate::Loggable for ClassDescriptionMapElem {
                     opt.map(|(class_id, class_description)| {
                         Ok(Self {
                             class_id: class_id
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context("rerun.datatypes.ClassDescriptionMapElem#class_id")?,
                             class_description: class_description
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context(
                                     "rerun.datatypes.ClassDescriptionMapElem#class_description",
                                 )?,
@@ -250,7 +255,7 @@ impl crate::Loggable for ClassDescriptionMapElem {
                     })
                     .transpose()
                 })
-                .collect::<crate::DeserializationResult<Vec<_>>>()
+                .collect::<::re_types_core::DeserializationResult<Vec<_>>>()
                 .with_context("rerun.datatypes.ClassDescriptionMapElem")?
             }
         })

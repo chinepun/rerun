@@ -14,7 +14,9 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// An image made up of integer class-ids
+use ::re_types_core::external::arrow2;
+
+/// **Archetype**: An image made up of integer class-ids
 ///
 /// The shape of the `TensorData` must be mappable to an `HxW` tensor.
 /// Each pixel corresponds to a depth value in units specified by meter.
@@ -22,21 +24,17 @@
 /// Leading and trailing unit-dimensions are ignored, so that
 /// `1x640x480x1` is treated as a `640x480` image.
 ///
+/// See also [`AnnotationContext`][crate::archetypes::AnnotationContext] to associate each class with a color and a label.
+///
 /// ## Example
 ///
+/// ### Simple segmentation image
 /// ```ignore
-/// //! Create and log a segmentation image.
-///
 /// use ndarray::{s, Array, ShapeBuilder};
-/// use rerun::{
-///     archetypes::{AnnotationContext, SegmentationImage},
-///     datatypes::Color,
-///     RecordingStreamBuilder,
-/// };
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_segmentation_image").memory()?;
+///         rerun::RecordingStreamBuilder::new("rerun_example_segmentation_image").memory()?;
 ///
 ///     // create a segmentation image
 ///     let mut image = Array::<u8, _>::zeros((8, 12).f());
@@ -44,44 +42,47 @@
 ///     image.slice_mut(s![4..8, 6..12]).fill(2);
 ///
 ///     // create an annotation context to describe the classes
-///     let annotation = AnnotationContext::new([
-///         (1, "red", Color::from(0xFF0000FF)),
-///         (2, "green", Color::from(0x00FF00FF)),
+///     let annotation = rerun::AnnotationContext::new([
+///         (1, "red", rerun::Rgba32::from_rgb(255, 0, 0)),
+///         (2, "green", rerun::Rgba32::from_rgb(0, 255, 0)),
 ///     ]);
 ///
 ///     // log the annotation and the image
-///     rec.log("/", &annotation)?;
+///     rec.log_timeless("/", &annotation)?;
 ///
-///     rec.log("image", &SegmentationImage::try_from(image)?)?;
+///     rec.log("image", &rerun::SegmentationImage::try_from(image)?)?;
 ///
 ///     rerun::native_viewer::show(storage.take())?;
 ///     Ok(())
 /// }
 /// ```
+/// <center>
 /// <picture>
 ///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/480w.png">
 ///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/768w.png">
 ///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/1024w.png">
 ///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/1200w.png">
-///   <img src="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/full.png">
+///   <img src="https://static.rerun.io/segmentation_image_simple/eb49e0b8cb870c75a69e2a47a2d202e5353115f6/full.png" width="640">
 /// </picture>
+/// </center>
 #[derive(Clone, Debug, PartialEq)]
 pub struct SegmentationImage {
     /// The image data. Should always be a rank-2 tensor.
     pub data: crate::components::TensorData,
 
     /// An optional floating point value that specifies the 2D drawing order.
+    ///
     /// Objects with higher values are drawn on top of those with lower values.
     pub draw_order: Option<crate::components::DrawOrder>,
 }
 
-static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.TensorData".into()]);
 
-static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.SegmentationImageIndicator".into()]);
 
-static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]> =
+static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 2usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.DrawOrder".into(),
@@ -89,7 +90,7 @@ static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 2usize]
         ]
     });
 
-static ALL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 4usize]> =
+static ALL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 4usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.TensorData".into(),
@@ -103,51 +104,49 @@ impl SegmentationImage {
     pub const NUM_COMPONENTS: usize = 4usize;
 }
 
-/// Indicator component for the [`SegmentationImage`] [`crate::Archetype`]
-pub type SegmentationImageIndicator = crate::GenericIndicatorComponent<SegmentationImage>;
+/// Indicator component for the [`SegmentationImage`] [`::re_types_core::Archetype`]
+pub type SegmentationImageIndicator = ::re_types_core::GenericIndicatorComponent<SegmentationImage>;
 
-impl crate::Archetype for SegmentationImage {
+impl ::re_types_core::Archetype for SegmentationImage {
     type Indicator = SegmentationImageIndicator;
 
     #[inline]
-    fn name() -> crate::ArchetypeName {
+    fn name() -> ::re_types_core::ArchetypeName {
         "rerun.archetypes.SegmentationImage".into()
     }
 
     #[inline]
-    fn indicator() -> crate::MaybeOwnedComponentBatch<'static> {
+    fn indicator() -> ::re_types_core::MaybeOwnedComponentBatch<'static> {
         static INDICATOR: SegmentationImageIndicator = SegmentationImageIndicator::DEFAULT;
-        crate::MaybeOwnedComponentBatch::Ref(&INDICATOR)
+        ::re_types_core::MaybeOwnedComponentBatch::Ref(&INDICATOR)
     }
 
     #[inline]
-    fn required_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn required_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         REQUIRED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn recommended_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn recommended_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         RECOMMENDED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn optional_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn optional_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         OPTIONAL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn all_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn all_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         ALL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
     fn from_arrow(
-        arrow_data: impl IntoIterator<
-            Item = (::arrow2::datatypes::Field, Box<dyn ::arrow2::array::Array>),
-        >,
-    ) -> crate::DeserializationResult<Self> {
+        arrow_data: impl IntoIterator<Item = (arrow2::datatypes::Field, Box<dyn arrow2::array::Array>)>,
+    ) -> ::re_types_core::DeserializationResult<Self> {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
         let arrays_by_name: ::std::collections::HashMap<_, _> = arrow_data
             .into_iter()
             .map(|(field, array)| (field.name, array))
@@ -155,14 +154,14 @@ impl crate::Archetype for SegmentationImage {
         let data = {
             let array = arrays_by_name
                 .get("rerun.components.TensorData")
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.SegmentationImage#data")?;
             <crate::components::TensorData>::from_arrow_opt(&**array)
                 .with_context("rerun.archetypes.SegmentationImage#data")?
                 .into_iter()
                 .next()
                 .flatten()
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.SegmentationImage#data")?
         };
         let draw_order = if let Some(array) = arrays_by_name.get("rerun.components.DrawOrder") {
@@ -172,7 +171,7 @@ impl crate::Archetype for SegmentationImage {
                     .into_iter()
                     .next()
                     .flatten()
-                    .ok_or_else(crate::DeserializationError::missing_data)
+                    .ok_or_else(::re_types_core::DeserializationError::missing_data)
                     .with_context("rerun.archetypes.SegmentationImage#draw_order")?
             })
         } else {
@@ -182,16 +181,16 @@ impl crate::Archetype for SegmentationImage {
     }
 }
 
-impl crate::AsComponents for SegmentationImage {
-    fn as_component_batches(&self) -> Vec<crate::MaybeOwnedComponentBatch<'_>> {
+impl ::re_types_core::AsComponents for SegmentationImage {
+    fn as_component_batches(&self) -> Vec<::re_types_core::MaybeOwnedComponentBatch<'_>> {
         re_tracing::profile_function!();
-        use crate::Archetype as _;
+        use ::re_types_core::Archetype as _;
         [
             Some(Self::indicator()),
-            Some((&self.data as &dyn crate::ComponentBatch).into()),
+            Some((&self.data as &dyn ::re_types_core::ComponentBatch).into()),
             self.draw_order
                 .as_ref()
-                .map(|comp| (comp as &dyn crate::ComponentBatch).into()),
+                .map(|comp| (comp as &dyn ::re_types_core::ComponentBatch).into()),
         ]
         .into_iter()
         .flatten()

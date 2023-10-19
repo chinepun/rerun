@@ -1,3 +1,5 @@
+"""Log annotation context with connections between keypoints."""
+
 import rerun as rr
 from rerun.datatypes import ClassDescription
 
@@ -19,6 +21,7 @@ rr.log(
             )
         ]
     ),
+    timeless=True,
 )
 
 rr.log(

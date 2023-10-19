@@ -19,11 +19,22 @@ namespace arrow {
 
 namespace rerun {
     namespace components {
+        /// **Component**: A multi-dimensional `Tensor` with optionally named arguments.
         struct TensorData {
             rerun::datatypes::TensorData data;
 
             /// Name of the component, used for serialization.
             static const char NAME[];
+
+          public:
+            // Extensions to generated type defined in 'tensor_data_ext.cpp'
+
+            /// Construct a 1D tensor with the given buffer.
+            static TensorData one_dim(rerun::datatypes::TensorBuffer buffer) {
+                auto data = rerun::components::TensorData{};
+                data.data = rerun::datatypes::TensorData::one_dim(std::move(buffer));
+                return data;
+            }
 
           public:
             TensorData() = default;

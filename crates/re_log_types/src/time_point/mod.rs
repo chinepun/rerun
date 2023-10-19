@@ -3,7 +3,10 @@ use std::collections::{btree_map, BTreeMap};
 mod time_int;
 mod timeline;
 
-use crate::{time::Time, SizeBytes, TimeRange};
+use crate::{
+    time::{Time, TimeZone},
+    TimeRange,
+};
 
 // Re-exports
 pub use time_int::TimeInt;
@@ -90,7 +93,7 @@ impl TimePoint {
     }
 }
 
-impl SizeBytes for TimePoint {
+impl re_types_core::SizeBytes for TimePoint {
     #[inline]
     fn heap_size_bytes(&self) -> u64 {
         type K = Timeline;
@@ -128,25 +131,37 @@ impl TimeType {
         }
     }
 
-    pub fn format(&self, time_int: TimeInt) -> String {
+    pub fn format(&self, time_int: TimeInt, time_zone_for_timestamps: TimeZone) -> String {
         if time_int <= TimeInt::BEGINNING {
             "-∞".into()
         } else if time_int >= TimeInt::MAX {
             "+∞".into()
         } else {
             match self {
-                Self::Time => Time::from(time_int).format(),
+                Self::Time => Time::from(time_int).format(time_zone_for_timestamps),
                 Self::Sequence => format!("#{}", time_int.0),
             }
         }
     }
 
-    pub fn format_range(&self, time_range: TimeRange) -> String {
+    pub fn format_utc(&self, time_int: TimeInt) -> String {
+        self.format(time_int, TimeZone::Utc)
+    }
+
+    pub fn format_range(
+        &self,
+        time_range: TimeRange,
+        time_zone_for_timestamps: TimeZone,
+    ) -> String {
         format!(
             "{}..={}",
-            self.format(time_range.min),
-            self.format(time_range.max)
+            self.format(time_range.min, time_zone_for_timestamps),
+            self.format(time_range.max, time_zone_for_timestamps)
         )
+    }
+
+    pub fn format_range_utc(&self, time_range: TimeRange) -> String {
+        self.format_range(time_range, TimeZone::Utc)
     }
 }
 

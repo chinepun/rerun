@@ -8,6 +8,7 @@ use re_log_types::EntityPath;
 use re_types::{
     components::{DepthMeter, TensorData},
     tensor_data::TensorDataMeaning,
+    Archetype as _,
 };
 use re_viewer_context::{
     AutoSpawnHeuristic, NamedViewSystem, PerSystemEntities, SpaceViewClassName, ViewerContext,
@@ -56,16 +57,11 @@ pub fn auto_spawn_heuristic(
         }
     }
 
-    if view_kind == SpatialSpaceViewKind::TwoD {
-        // Prefer 2D views over 3D views.
-        score += 0.1;
-    }
-
     AutoSpawnHeuristic::SpawnClassWithHighestScoreForRoot(score)
 }
 
 pub fn update_object_property_heuristics(
-    ctx: &mut ViewerContext<'_>,
+    ctx: &ViewerContext<'_>,
     per_system_entities: &PerSystemEntities,
     entity_properties: &mut re_data_store::EntityPropertyMap,
     scene_bbox_accum: &macaw::BoundingBox,
@@ -129,7 +125,10 @@ fn update_pinhole_property_heuristics(
             let default_image_plane_distance = if scene_size.is_finite() && scene_size > 0.0 {
                 scene_size * 0.02 // Works pretty well for `examples/python/open_photogrammetry_format/main.py --no-frames`
             } else {
-                1.0
+                // This value somewhat arbitrary. In almost all cases where the scene has defined bounds
+                // the heuristic will change it or it will be user edited. In the case of non-defined bounds
+                // this value works better with the default camera setup.
+                0.3
             };
             properties.pinhole_image_plane_distance =
                 EditableAutoValue::Auto(default_image_plane_distance);
@@ -139,7 +138,7 @@ fn update_pinhole_property_heuristics(
 }
 
 fn update_depth_cloud_property_heuristics(
-    ctx: &mut ViewerContext<'_>,
+    ctx: &ViewerContext<'_>,
     per_system_entities: &PerSystemEntities,
     entity_properties: &mut re_data_store::EntityPropertyMap,
     spatial_kind: SpatialSpaceViewKind,
@@ -149,7 +148,7 @@ fn update_depth_cloud_property_heuristics(
         .get(&ImagesPart::name())
         .unwrap_or(&BTreeSet::new())
     {
-        let store = &ctx.store_db.entity_db.data_store;
+        let store = ctx.store_db.store();
         let Some(tensor) =
             store.query_latest_component::<TensorData>(ent_path, &ctx.current_query())
         else {
@@ -209,7 +208,7 @@ fn update_transform3d_lines_heuristics(
                 return Some(ent_path);
             } else {
                 // Any direct child has a pinhole camera?
-                if let Some(child_tree) = ctx.store_db.entity_db.tree.subtree(ent_path) {
+                if let Some(child_tree) = ctx.store_db.entity_db().tree.subtree(ent_path) {
                     for child in child_tree.children.values() {
                         if query_pinhole(store, &ctx.current_query(), &child.path).is_some() {
                             return Some(&child.path);
@@ -223,14 +222,18 @@ fn update_transform3d_lines_heuristics(
 
         let mut properties = entity_properties.get(ent_path);
         if properties.transform_3d_visible.is_auto() {
-            // By default show the transform if it is a camera extrinsic or if it's the only component on this entity path.
-            let single_component = ctx
+            // By default show the transform if it is a camera extrinsic,
+            // or if this entity only contains Transform3D components.
+            let only_has_transform_components = ctx
                 .store_db
                 .store()
                 .all_components(&ctx.current_query().timeline, ent_path)
-                .map_or(false, |c| c.len() == 1);
+                .map_or(false, |c| {
+                    c.iter()
+                        .all(|c| re_types::archetypes::Transform3D::all_components().contains(c))
+                });
             properties.transform_3d_visible = EditableAutoValue::Auto(
-                single_component
+                only_has_transform_components
                     || is_pinhole_extrinsics_of(ctx.store_db.store(), ent_path, ctx).is_some(),
             );
         }

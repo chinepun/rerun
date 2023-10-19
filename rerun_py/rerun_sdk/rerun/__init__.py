@@ -1,9 +1,9 @@
-"""The Rerun Python SDK, which is a wrapper around the re_sdk crate."""
 from __future__ import annotations
 
 import functools
 import random
 from typing import Any, Callable, TypeVar, cast
+from uuid import UUID
 
 import numpy as np
 
@@ -13,6 +13,7 @@ import numpy as np
 __all__ = [
     "AnnotationContext",
     "AnnotationInfo",
+    "AnyValues",
     "Arrows3D",
     "AsComponents",
     "Asset3D",
@@ -32,9 +33,14 @@ __all__ = [
     "LineStrips2D",
     "LineStrips3D",
     "LoggingHandler",
+    "Material",
     "MediaType",
+    "MemoryRecording",
     "Mesh3D",
     "MeshFormat",
+    "MeshProperties",
+    "OutOfTreeTransform3D",
+    "OutOfTreeTransform3DBatch",
     "Pinhole",
     "Points2D",
     "Points3D",
@@ -46,6 +52,7 @@ __all__ = [
     "Scale3D",
     "SegmentationImage",
     "Tensor",
+    "TensorData",
     "TextDocument",
     "TextLog",
     "TextLogLevel",
@@ -56,6 +63,7 @@ __all__ = [
     "TranslationAndMat3x3",
     "TranslationRotationScale3D",
     "ViewCoordinates",
+    "archetypes",
     "bindings",
     "components",
     "connect",
@@ -117,6 +125,7 @@ import rerun_bindings as bindings  # type: ignore[attr-defined]
 
 from ._image import ImageEncoded, ImageFormat
 from ._log import AsComponents, ComponentBatchLike, IndicatorComponentBatch, log, log_components
+from .any_value import AnyValues
 from .archetypes import (
     AnnotationContext,
     Arrows3D,
@@ -143,8 +152,22 @@ from .archetypes import (
     ViewCoordinates,
 )
 from .archetypes.boxes2d_ext import Box2DFormat
-from .components import MediaType, TextLogLevel
-from .datatypes import Quaternion, RotationAxisAngle, Scale3D, TranslationAndMat3x3, TranslationRotationScale3D
+from .components import (
+    Material,
+    MediaType,
+    MeshProperties,
+    OutOfTreeTransform3D,
+    OutOfTreeTransform3DBatch,
+    TextLogLevel,
+)
+from .datatypes import (
+    Quaternion,
+    RotationAxisAngle,
+    Scale3D,
+    TensorData,
+    TranslationAndMat3x3,
+    TranslationRotationScale3D,
+)
 from .error_utils import set_strict_mode
 from .log_deprecated.annotation import AnnotationInfo, ClassDescription, log_annotation_context
 from .log_deprecated.arrow import log_arrow
@@ -170,6 +193,7 @@ from .log_deprecated.transform import (
     log_view_coordinates,
 )
 from .logging_handler import LoggingHandler
+from .recording import MemoryRecording
 from .recording_stream import (
     RecordingStream,
     get_application_id,
@@ -224,10 +248,11 @@ def _init_recording_stream() -> None:
 _init_recording_stream()
 
 
+# TODO(#3793): defaulting recording_id to authkey should be opt-in
 def init(
     application_id: str,
     *,
-    recording_id: str | None = None,
+    recording_id: str | UUID | None = None,
     spawn: bool = False,
     init_logging: bool = True,
     default_enabled: bool = True,
@@ -242,6 +267,26 @@ def init(
     Without an active recording, all methods of the SDK will turn into no-ops.
 
     For more advanced use cases, e.g. multiple recordings setups, see [`rerun.new_recording`][].
+
+    !!! Warning
+        If you don't specify a `recording_id`, it will default to a random value that is generated once
+        at the start of the process.
+        That value will be kept around for the whole lifetime of the process, and even inherited by all
+        its subprocesses, if any.
+
+        This makes it trivial to log data to the same recording in a multiprocess setup, but it also means
+        that the following code will _not_ create two distinct recordings:
+        ```
+        rr.init("my_app")
+        rr.init("my_app")
+        ```
+
+        To create distinct recordings from the same process, specify distinct recording IDs:
+        ```
+        from uuid import uuid4
+        rr.init("my_app", recording_id=uuid4())
+        rr.init("my_app", recording_id=uuid4())
+        ```
 
     Parameters
     ----------
@@ -299,6 +344,9 @@ def init(
     # via `_register_on_fork` but it's worth being conservative.
     cleanup_if_forked_child()
 
+    if recording_id is not None:
+        recording_id = str(recording_id)
+
     if init_logging:
         new_recording(
             application_id=application_id,
@@ -325,10 +373,11 @@ def init(
         _spawn()
 
 
+# TODO(#3793): defaulting recording_id to authkey should be opt-in
 def new_recording(
     *,
     application_id: str,
-    recording_id: str | None = None,
+    recording_id: str | UUID | None = None,
     make_default: bool = False,
     make_thread_default: bool = False,
     spawn: bool = False,
@@ -338,6 +387,26 @@ def new_recording(
     Creates a new recording with a user-chosen application id (name) that can be used to log data.
 
     If you only need a single global recording, [`rerun.init`][] might be simpler.
+
+    !!! Warning
+        If you don't specify a `recording_id`, it will default to a random value that is generated once
+        at the start of the process.
+        That value will be kept around for the whole lifetime of the process, and even inherited by all
+        its subprocesses, if any.
+
+        This makes it trivial to log data to the same recording in a multiprocess setup, but it also means
+        that the following code will _not_ create two distinct recordings:
+        ```
+        rr.init("my_app")
+        rr.init("my_app")
+        ```
+
+        To create distinct recordings from the same process, specify distinct recording IDs:
+        ```
+        from uuid import uuid4
+        rec = rr.new_recording(application_id="test", recording_id=uuid4())
+        rec = rr.new_recording(application_id="test", recording_id=uuid4())
+        ```
 
     Parameters
     ----------
@@ -408,6 +477,9 @@ def new_recording(
                 application_path = path
     except Exception:
         pass
+
+    if recording_id is not None:
+        recording_id = str(recording_id)
 
     recording = RecordingStream(
         bindings.new_recording(

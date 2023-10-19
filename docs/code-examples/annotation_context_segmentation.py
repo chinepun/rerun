@@ -1,3 +1,5 @@
+"""Log a segmentation image with annotations."""
+
 import numpy as np
 import rerun as rr
 
@@ -9,6 +11,6 @@ image[0:4, 0:6] = 1
 image[4:8, 6:12] = 2
 
 # Log an annotation context to assign a label and color to each class
-rr.log("segmentation", rr.AnnotationContext([(1, "red", (255, 0, 0)), (2, "green", (0, 255, 0))]))
+rr.log("segmentation", rr.AnnotationContext([(1, "red", (255, 0, 0)), (2, "green", (0, 255, 0))]), timeless=True)
 
-rr.log_segmentation_image("segmentation/image", np.array(image))
+rr.log("segmentation/image", rr.SegmentationImage(image))

@@ -14,7 +14,9 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// The `AnnotationContext` provides additional information on how to display entities.
+use ::re_types_core::external::arrow2;
+
+/// **Archetype**: The `AnnotationContext` provides additional information on how to display entities.
 ///
 /// Entities can use `ClassId`s and `KeypointId`s to provide annotations, and
 /// the labels and colors will be looked up in the appropriate
@@ -22,74 +24,25 @@
 /// path-hierarchy when searching up through the ancestors of a given entity
 /// path.
 ///
-/// ## Examples
+/// See also [`ClassDescription`][crate::datatypes::ClassDescription].
 ///
-/// ### Rectangles
-/// ```ignore
-/// //! Log rectangles with different colors and labels using annotation context
-///
-/// use rerun::{
-///     archetypes::{AnnotationContext, Boxes2D},
-///     datatypes::Color,
-///     RecordingStreamBuilder,
-/// };
-///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_annotation_context_rects").memory()?;
-///
-///     // Log an annotation context to assign a label and color to each class
-///     rec.log(
-///         "/",
-///         &AnnotationContext::new([
-///             (1, "red", Color::from(0xFF0000FF)),
-///             (2, "green", Color::from(0x00FF00FF)),
-///         ]),
-///     )?;
-///
-///     // Log a batch of 2 rectangles with different class IDs
-///     rec.log(
-///         "detections",
-///         &Boxes2D::from_mins_and_sizes([(-2., -2.), (0., 0.)], [(3., 3.), (2., 2.)])
-///             .with_class_ids([1, 2]),
-///     )?;
-///
-///     // Log an extra rect to set the view bounds
-///     rec.log("bounds", &Boxes2D::from_half_sizes([(2.5, 2.5)]))?;
-///
-///     rerun::native_viewer::show(storage.take())?;
-///     Ok(())
-/// }
-/// ```
-/// <picture>
-///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/annotation_context_rects/9b446c36011ed30fce7dc6ed03d5fd9557460f70/480w.png">
-///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/annotation_context_rects/9b446c36011ed30fce7dc6ed03d5fd9557460f70/768w.png">
-///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/annotation_context_rects/9b446c36011ed30fce7dc6ed03d5fd9557460f70/1024w.png">
-///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/annotation_context_rects/9b446c36011ed30fce7dc6ed03d5fd9557460f70/1200w.png">
-///   <img src="https://static.rerun.io/annotation_context_rects/9b446c36011ed30fce7dc6ed03d5fd9557460f70/full.png">
-/// </picture>
+/// ## Example
 ///
 /// ### Segmentation
 /// ```ignore
-/// //! Log a segmentation image with annotations.
-///
 /// use ndarray::{s, Array, ShapeBuilder};
-/// use rerun::{
-///     archetypes::{AnnotationContext, SegmentationImage},
-///     datatypes::Color,
-///     RecordingStreamBuilder,
-/// };
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_annotation_context_segmentation").memory()?;
+///         rerun::RecordingStreamBuilder::new("rerun_example_annotation_context_segmentation")
+///             .memory()?;
 ///
 ///     // create an annotation context to describe the classes
-///     rec.log(
+///     rec.log_timeless(
 ///         "segmentation",
-///         &AnnotationContext::new([
-///             (1, "red", Color::from(0xFF0000FF)),
-///             (2, "green", Color::from(0x00FF00FF)),
+///         &rerun::AnnotationContext::new([
+///             (1, "red", rerun::Rgba32::from_rgb(255, 0, 0)),
+///             (2, "green", rerun::Rgba32::from_rgb(0, 255, 0)),
 ///         ]),
 ///     )?;
 ///
@@ -98,88 +51,40 @@
 ///     data.slice_mut(s![0..4, 0..6]).fill(1);
 ///     data.slice_mut(s![4..8, 6..12]).fill(2);
 ///
-///     rec.log("segmentation/image", &SegmentationImage::try_from(data)?)?;
+///     rec.log(
+///         "segmentation/image",
+///         &rerun::SegmentationImage::try_from(data)?,
+///     )?;
 ///
 ///     rerun::native_viewer::show(storage.take())?;
 ///     Ok(())
 /// }
 /// ```
+/// <center>
 /// <picture>
 ///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/480w.png">
 ///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/768w.png">
 ///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/1024w.png">
 ///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/1200w.png">
-///   <img src="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/full.png">
+///   <img src="https://static.rerun.io/annotation_context_segmentation/0e21c0a04e456fec41d16b0deaa12c00cddf2d9b/full.png" width="640">
 /// </picture>
-///
-/// ### Connections
-/// ```ignore
-/// //! Log some very simple points.
-///
-/// use rerun::archetypes::{AnnotationContext, Points3D};
-/// use rerun::datatypes::{ClassDescription, Color, KeypointPair};
-/// use rerun::RecordingStreamBuilder;
-///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let (rec, storage) =
-///         RecordingStreamBuilder::new("rerun_example_annotation_context_connections").memory()?;
-///
-///     // Log an annotation context to assign a label and color to each class
-///     // Create a class description with labels and color for each keypoint ID as well as some
-///     // connections between keypoints.
-///     rec.log(
-///         "/",
-///         &AnnotationContext::new([ClassDescription {
-///             info: 0.into(),
-///             keypoint_annotations: vec![
-///                 (0, "zero", Color::from(0xFF0000FF)).into(),
-///                 (1, "one", Color::from(0x00FF00FF)).into(),
-///                 (2, "two", Color::from(0x0000FFFF)).into(),
-///                 (3, "three", Color::from(0xFFFF00FF)).into(),
-///             ],
-///             keypoint_connections: KeypointPair::vec_from([(0, 2), (1, 2), (2, 3)]),
-///         }]),
-///     )?;
-///
-///     // Log some points with different keypoint IDs
-///     rec.log(
-///         "points",
-///         &Points3D::new([
-///             [0., 0., 0.],
-///             [50., 0., 20.],
-///             [100., 100., 30.],
-///             [0., 50., 40.],
-///         ])
-///         .with_keypoint_ids([0, 1, 2, 3])
-///         .with_class_ids([0]),
-///     )?;
-///
-///     rerun::native_viewer::show(storage.take())?;
-///     Ok(())
-/// }
-/// ```
-/// <picture>
-///   <source media="(max-width: 480px)" srcset="https://static.rerun.io/annotation_context_connections/4a8422bc154699c5334f574ff01b55c5cd1748e3/480w.png">
-///   <source media="(max-width: 768px)" srcset="https://static.rerun.io/annotation_context_connections/4a8422bc154699c5334f574ff01b55c5cd1748e3/768w.png">
-///   <source media="(max-width: 1024px)" srcset="https://static.rerun.io/annotation_context_connections/4a8422bc154699c5334f574ff01b55c5cd1748e3/1024w.png">
-///   <source media="(max-width: 1200px)" srcset="https://static.rerun.io/annotation_context_connections/4a8422bc154699c5334f574ff01b55c5cd1748e3/1200w.png">
-///   <img src="https://static.rerun.io/annotation_context_connections/4a8422bc154699c5334f574ff01b55c5cd1748e3/full.png">
-/// </picture>
+/// </center>
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AnnotationContext {
+    /// List of class descriptions, mapping class indices to class names, colors etc.
     pub context: crate::components::AnnotationContext,
 }
 
-static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static REQUIRED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.AnnotationContext".into()]);
 
-static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static RECOMMENDED_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.AnnotationContextIndicator".into()]);
 
-static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 1usize]> =
+static OPTIONAL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 1usize]> =
     once_cell::sync::Lazy::new(|| ["rerun.components.InstanceKey".into()]);
 
-static ALL_COMPONENTS: once_cell::sync::Lazy<[crate::ComponentName; 3usize]> =
+static ALL_COMPONENTS: once_cell::sync::Lazy<[::re_types_core::ComponentName; 3usize]> =
     once_cell::sync::Lazy::new(|| {
         [
             "rerun.components.AnnotationContext".into(),
@@ -192,51 +97,49 @@ impl AnnotationContext {
     pub const NUM_COMPONENTS: usize = 3usize;
 }
 
-/// Indicator component for the [`AnnotationContext`] [`crate::Archetype`]
-pub type AnnotationContextIndicator = crate::GenericIndicatorComponent<AnnotationContext>;
+/// Indicator component for the [`AnnotationContext`] [`::re_types_core::Archetype`]
+pub type AnnotationContextIndicator = ::re_types_core::GenericIndicatorComponent<AnnotationContext>;
 
-impl crate::Archetype for AnnotationContext {
+impl ::re_types_core::Archetype for AnnotationContext {
     type Indicator = AnnotationContextIndicator;
 
     #[inline]
-    fn name() -> crate::ArchetypeName {
+    fn name() -> ::re_types_core::ArchetypeName {
         "rerun.archetypes.AnnotationContext".into()
     }
 
     #[inline]
-    fn indicator() -> crate::MaybeOwnedComponentBatch<'static> {
+    fn indicator() -> ::re_types_core::MaybeOwnedComponentBatch<'static> {
         static INDICATOR: AnnotationContextIndicator = AnnotationContextIndicator::DEFAULT;
-        crate::MaybeOwnedComponentBatch::Ref(&INDICATOR)
+        ::re_types_core::MaybeOwnedComponentBatch::Ref(&INDICATOR)
     }
 
     #[inline]
-    fn required_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn required_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         REQUIRED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn recommended_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn recommended_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         RECOMMENDED_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn optional_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn optional_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         OPTIONAL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
-    fn all_components() -> ::std::borrow::Cow<'static, [crate::ComponentName]> {
+    fn all_components() -> ::std::borrow::Cow<'static, [::re_types_core::ComponentName]> {
         ALL_COMPONENTS.as_slice().into()
     }
 
     #[inline]
     fn from_arrow(
-        arrow_data: impl IntoIterator<
-            Item = (::arrow2::datatypes::Field, Box<dyn ::arrow2::array::Array>),
-        >,
-    ) -> crate::DeserializationResult<Self> {
+        arrow_data: impl IntoIterator<Item = (arrow2::datatypes::Field, Box<dyn arrow2::array::Array>)>,
+    ) -> ::re_types_core::DeserializationResult<Self> {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
         let arrays_by_name: ::std::collections::HashMap<_, _> = arrow_data
             .into_iter()
             .map(|(field, array)| (field.name, array))
@@ -244,27 +147,27 @@ impl crate::Archetype for AnnotationContext {
         let context = {
             let array = arrays_by_name
                 .get("rerun.components.AnnotationContext")
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.AnnotationContext#context")?;
             <crate::components::AnnotationContext>::from_arrow_opt(&**array)
                 .with_context("rerun.archetypes.AnnotationContext#context")?
                 .into_iter()
                 .next()
                 .flatten()
-                .ok_or_else(crate::DeserializationError::missing_data)
+                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                 .with_context("rerun.archetypes.AnnotationContext#context")?
         };
         Ok(Self { context })
     }
 }
 
-impl crate::AsComponents for AnnotationContext {
-    fn as_component_batches(&self) -> Vec<crate::MaybeOwnedComponentBatch<'_>> {
+impl ::re_types_core::AsComponents for AnnotationContext {
+    fn as_component_batches(&self) -> Vec<::re_types_core::MaybeOwnedComponentBatch<'_>> {
         re_tracing::profile_function!();
-        use crate::Archetype as _;
+        use ::re_types_core::Archetype as _;
         [
             Some(Self::indicator()),
-            Some((&self.context as &dyn crate::ComponentBatch).into()),
+            Some((&self.context as &dyn ::re_types_core::ComponentBatch).into()),
         ]
         .into_iter()
         .flatten()
