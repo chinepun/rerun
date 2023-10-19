@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "../arrow.hpp"
 #include "../component_batch.hpp"
 #include "../components/annotation_context.hpp"
 #include "../data_cell.hpp"
+#include "../indicator_component.hpp"
 #include "../result.hpp"
 
 #include <cstdint>
@@ -15,7 +15,7 @@
 
 namespace rerun {
     namespace archetypes {
-        /// The `AnnotationContext` provides additional information on how to display entities.
+        /// **Archetype**: The `AnnotationContext` provides additional information on how to display entities.
         ///
         /// Entities can use `ClassId`s and `KeypointId`s to provide annotations, and
         /// the labels and colors will be looked up in the appropriate
@@ -25,68 +25,71 @@ namespace rerun {
         ///
         /// ## Example
         ///
-        /// ### Rectangles
+        /// ### Segmentation
         /// ```cpp,ignore
-        /// // Log an annotation context to assign a label and color to each class
-        ///
         /// #include <rerun.hpp>
         ///
-        /// namespace rr = rerun;
+        /// #include <algorithm>
         ///
         /// int main() {
-        ///     auto rec = rr::RecordingStream("rerun_example_annotation_context_rects");
+        ///     auto rec = rerun::RecordingStream("rerun_example_annotation_context_connections");
         ///     rec.connect("127.0.0.1:9876").throw_on_failure();
         ///
-        ///     // Log an annotation context to assign a label and color to each class
-        ///     rec.log(
-        ///         "/",
-        ///         rr::AnnotationContext({
-        ///             rr::datatypes::AnnotationInfo(1, "red", rr::datatypes::Color(255, 0, 0)),
-        ///             rr::datatypes::AnnotationInfo(2, "green", rr::datatypes::Color(0, 255, 0)),
+        ///     // create an annotation context to describe the classes
+        ///     rec.log_timeless(
+        ///         "segmentation",
+        ///         rerun::AnnotationContext({
+        ///             rerun::AnnotationInfo(1, "red", rerun::Rgba32(255, 0, 0)),
+        ///             rerun::AnnotationInfo(2, "green", rerun::Rgba32(0, 255, 0)),
         ///         })
         ///     );
         ///
-        ///     // Log a batch of 2 rectangles with different class IDs
-        ///     rec.log(
-        ///         "detections",
-        ///         rr::Boxes2D::from_mins_and_sizes(
-        ///             {{-2.0f, -2.0f}, {0.0f, 0.f}},
-        ///             {{3.0f, 3.0f}, {2.0f, 2.0f}}
-        ///         ).with_class_ids({1, 2})
-        ///     );
+        ///     // create a segmentation image
+        ///     const int HEIGHT = 8;
+        ///     const int WIDTH = 12;
+        ///     std::vector<uint8_t> data(WIDTH * HEIGHT, 0);
+        ///     for (auto y = 0; y <4; ++y) {                   // top half
+        ///         std::fill_n(data.begin() + y * WIDTH, 6, 1); // left half
+        ///     }
+        ///     for (auto y = 4; y <8; ++y) {                       // bottom half
+        ///         std::fill_n(data.begin() + y * WIDTH + 6, 6, 2); // right half
+        ///     }
         ///
-        ///     // Log an extra rect to set the view bounds
-        ///     rec.log("bounds", rr::Boxes2D::from_half_sizes({{2.5f, 2.5f}}));
+        ///     rec.log("segmentation/image", rerun::SegmentationImage({HEIGHT, WIDTH}, std::move(data)));
         /// }
         /// ```
         struct AnnotationContext {
+            /// List of class descriptions, mapping class indices to class names, colors etc.
             rerun::components::AnnotationContext context;
 
-            /// Name of the indicator component, used to identify the archetype when converting to a
-            /// list of components.
+            /// Name of the indicator component, used to identify the archetype when converting to a list of components.
             static const char INDICATOR_COMPONENT_NAME[];
+            /// Indicator component, used to identify the archetype when converting to a list of components.
+            using IndicatorComponent = components::IndicatorComponent<INDICATOR_COMPONENT_NAME>;
 
           public:
             AnnotationContext() = default;
+            AnnotationContext(AnnotationContext&& other) = default;
 
-            AnnotationContext(rerun::components::AnnotationContext _context)
+            explicit AnnotationContext(rerun::components::AnnotationContext _context)
                 : context(std::move(_context)) {}
 
             /// Returns the number of primary instances of this archetype.
             size_t num_instances() const {
                 return 1;
             }
-
-            /// Creates an `AnonymousComponentBatch` out of the associated indicator component. This
-            /// allows for associating arbitrary indicator components with arbitrary data. Check out
-            /// the `manual_indicator` API example to see what's possible.
-            static AnonymousComponentBatch indicator();
-
-            /// Collections all component lists into a list of component collections. *Attention:*
-            /// The returned vector references this instance and does not take ownership of any
-            /// data. Adding any new components to this archetype will invalidate the returned
-            /// component lists!
-            std::vector<AnonymousComponentBatch> as_component_batches() const;
         };
+
     } // namespace archetypes
+
+    template <typename T>
+    struct AsComponents;
+
+    template <>
+    struct AsComponents<archetypes::AnnotationContext> {
+        /// Serialize all set component batches.
+        static Result<std::vector<SerializedComponentBatch>> serialize(
+            const archetypes::AnnotationContext& archetype
+        );
+    };
 } // namespace rerun

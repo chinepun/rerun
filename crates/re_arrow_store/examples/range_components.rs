@@ -11,8 +11,8 @@ use re_types::datagen::build_some_positions2d;
 use re_types::{
     components::{InstanceKey, Position2D},
     testing::{build_some_large_structs, LargeStruct},
-    Loggable as _,
 };
+use re_types_core::Loggable as _;
 
 fn main() {
     let mut store = DataStore::new(InstanceKey::name(), Default::default());
@@ -65,7 +65,7 @@ fn main() {
             "Found data at time {} from {}'s PoV (outer-joining):\n{}",
             time.map_or_else(
                 || "<timeless>".into(),
-                |time| TimeType::Sequence.format(time)
+                |time| TimeType::Sequence.format_utc(time)
             ),
             LargeStruct::name(),
             df,
@@ -87,7 +87,7 @@ fn main() {
             "Found data at time {} from {}'s PoV (outer-joining):\n{}",
             time.map_or_else(
                 || "<timeless>".into(),
-                |time| TimeType::Sequence.format(time)
+                |time| TimeType::Sequence.format_utc(time)
             ),
             Position2D::name(),
             df,

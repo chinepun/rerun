@@ -12,9 +12,8 @@ use re_viewer_context::{
 };
 
 use crate::{
-    blueprint_components::{
-        AutoSpaceViews, SpaceViewComponent, SpaceViewMaximized, ViewportLayout, VIEWPORT_PATH,
-    },
+    blueprint::AutoSpaceViews,
+    blueprint_components::{SpaceViewComponent, SpaceViewMaximized, ViewportLayout, VIEWPORT_PATH},
     space_info::SpaceInfoCollection,
     space_view::SpaceViewBlueprint,
     space_view_heuristics::{default_created_space_views, identify_entities_per_system_per_class},
@@ -81,7 +80,7 @@ impl<'a> ViewportBlueprint<'a> {
     }
 
     /// Reset the blueprint to a default state using some heuristics.
-    pub fn reset(&mut self, ctx: &mut ViewerContext<'_>, spaces_info: &SpaceInfoCollection) {
+    pub fn reset(&mut self, ctx: &ViewerContext<'_>, spaces_info: &SpaceInfoCollection) {
         // TODO(jleibs): When using blueprint API, "reset" should go back to the initially transmitted
         // blueprint, not the default blueprint.
         re_tracing::profile_function!();
@@ -361,7 +360,7 @@ pub fn load_viewport_blueprint(blueprint_db: &re_data_store::StoreDb) -> Viewpor
 
     let space_views: HashMap<SpaceViewId, SpaceViewBlueprint> = if let Some(space_views) =
         blueprint_db
-            .entity_db
+            .entity_db()
             .tree
             .children
             .get(&re_data_store::EntityPathPart::Name(

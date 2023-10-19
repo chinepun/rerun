@@ -1,3 +1,5 @@
+#![allow(missing_docs)] // It's only for testing
+
 pub mod archetypes;
 pub mod components;
 pub mod datatypes;
@@ -17,7 +19,7 @@ pub fn build_some_large_structs(len: usize) -> Vec<LargeStruct> {
                 many_strings_required: ["hello", "friend", "let's", "test!"]
                     .into_iter()
                     .take(i % 5)
-                    .map(crate::ArrowString::from)
+                    .map(::re_types_core::ArrowString::from)
                     .collect(),
                 many_strings_optional: None,
                 flattened_scalar: i as f32,

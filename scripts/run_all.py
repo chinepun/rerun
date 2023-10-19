@@ -16,8 +16,10 @@ from typing import Any
 
 EXTRA_ARGS = {
     "examples/python/clock": ["--steps=200"],  # Make it faster
-    "examples/python/live_camera_edge_detection": ["--num-frames=30"],  # Make sure it finishes
+    "examples/python/detect_and_track_objects": ["--max-frame=10"],  # Make it faster
     "examples/python/face_tracking": ["--max-frame=30"],  # Make sure it finishes
+    "examples/python/human_pose_tracking": ["--max-frame=10"],  # Make it faster
+    "examples/python/live_camera_edge_detection": ["--num-frames=30"],  # Make sure it finishes
 }
 
 HAS_NO_RERUN_ARGS = {
@@ -28,6 +30,7 @@ HAS_NO_RERUN_ARGS = {
 }
 
 MIN_PYTHON_REQUIREMENTS: dict[str : tuple[int, int]] = {
+    "examples/python/controlnet": (3, 10),
     # pyopf requires Python 3.10
     "examples/python/open_photogrammetry_format": (3, 10),
 }
@@ -100,7 +103,6 @@ def collect_examples(fast: bool) -> list[str]:
             "examples/python/rgbd",
             "examples/python/signed_distance_fields",
             "examples/python/structure_from_motion",
-            "examples/python/text_logging",
         ]
     else:
         examples = []

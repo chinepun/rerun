@@ -11,12 +11,14 @@ pub struct TensorStats {
 
 impl TensorStats {
     pub fn new(tensor: &re_types::datatypes::TensorData) -> Self {
+        re_tracing::profile_function!();
+
         use half::f16;
         use ndarray::ArrayViewD;
         use re_types::tensor_data::TensorDataType;
 
         macro_rules! declare_tensor_range_int {
-            ($name: ident, $typ: ty) => {
+            ($name:ident, $typ:ty) => {
                 fn $name(tensor: ndarray::ArrayViewD<'_, $typ>) -> (f64, f64) {
                     re_tracing::profile_function!();
                     let (min, max) = tensor
@@ -29,7 +31,7 @@ impl TensorStats {
         }
 
         macro_rules! declare_tensor_range_float {
-            ($name: ident, $typ: ty) => {
+            ($name:ident, $typ:ty) => {
                 fn $name(tensor: ndarray::ArrayViewD<'_, $typ>) -> (f64, f64) {
                     re_tracing::profile_function!();
                     let (min, max) = tensor.fold(
@@ -67,7 +69,7 @@ impl TensorStats {
         }
 
         macro_rules! declare_tensor_finite_range_float {
-            ($name: ident, $typ: ty) => {
+            ($name:ident, $typ:ty) => {
                 fn $name(tensor: ndarray::ArrayViewD<'_, $typ>) -> (f64, f64) {
                     re_tracing::profile_function!();
                     let (min, max) = tensor.fold(

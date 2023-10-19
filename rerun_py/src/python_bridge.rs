@@ -11,10 +11,9 @@ use pyo3::{
     types::{PyBytes, PyDict},
 };
 
-use re_viewer::blueprint_components::panel::PanelState;
 use re_viewer_context::SpaceViewId;
 use re_viewport::{
-    blueprint_components::{AutoSpaceViews, SpaceViewComponent, VIEWPORT_PATH},
+    blueprint_components::{SpaceViewComponent, VIEWPORT_PATH},
     SpaceViewBlueprint,
 };
 
@@ -27,8 +26,8 @@ use rerun::{
 pub use rerun::{
     components::{
         AnnotationContext, Blob, ClassId, Color, DisconnectedSpace, DrawOrder, InstanceKey,
-        KeypointId, LineStrip2D, LineStrip3D, Origin3D, OutOfTreeTransform3D, PinholeProjection,
-        Position2D, Position3D, Radius, Text, Transform3D, Vector3D, ViewCoordinates,
+        KeypointId, LineStrip2D, LineStrip3D, OutOfTreeTransform3D, PinholeProjection, Position2D,
+        Position3D, Radius, Text, Transform3D, Vector3D, ViewCoordinates,
     },
     coordinates::{Axis3, Handedness, Sign, SignedAxis3},
 };
@@ -694,26 +693,32 @@ fn set_panels(
     timeline_view_expanded: Option<bool>,
     blueprint: Option<&PyRecordingStream>,
 ) {
+    // TODO(jleibs): This should go away as part of https://github.com/rerun-io/rerun/issues/2089
+    use re_viewer::blueprint::PanelView;
+
     if let Some(expanded) = blueprint_view_expanded {
-        set_panel(PanelState::BLUEPRINT_VIEW_PATH, expanded, blueprint);
+        set_panel(PanelView::BLUEPRINT_VIEW_PATH, expanded, blueprint);
     }
     if let Some(expanded) = selection_view_expanded {
-        set_panel(PanelState::SELECTION_VIEW_PATH, expanded, blueprint);
+        set_panel(PanelView::SELECTION_VIEW_PATH, expanded, blueprint);
     }
     if let Some(expanded) = timeline_view_expanded {
-        set_panel(PanelState::TIMELINE_VIEW_PATH, expanded, blueprint);
+        set_panel(PanelView::TIMELINE_VIEW_PATH, expanded, blueprint);
     }
 }
 
-fn set_panel(entity_path: &str, expanded: bool, blueprint: Option<&PyRecordingStream>) {
+fn set_panel(entity_path: &str, is_expanded: bool, blueprint: Option<&PyRecordingStream>) {
     let Some(blueprint) = get_blueprint_recording(blueprint) else {
         return;
     };
 
+    // TODO(jleibs): This should go away as part of https://github.com/rerun-io/rerun/issues/2089
+    use re_viewer::blueprint::PanelView;
+
     // TODO(jleibs): Validation this is a valid blueprint path?
     let entity_path = parse_entity_path(entity_path);
 
-    let panel_state = PanelState { expanded };
+    let panel_state = PanelView { is_expanded };
 
     let row = DataRow::from_cells1(
         RowId::random(),
@@ -777,6 +782,9 @@ fn set_auto_space_views(enabled: bool, blueprint: Option<&PyRecordingStream>) {
     let Some(blueprint) = get_blueprint_recording(blueprint) else {
         return;
     };
+
+    // TODO(jleibs): This should go away as part of https://github.com/rerun-io/rerun/issues/2089
+    use re_viewport::blueprint::AutoSpaceViews;
 
     let enable_auto_space = AutoSpaceViews(enabled);
 

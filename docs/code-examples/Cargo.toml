@@ -36,6 +36,10 @@ name = "asset3d_out_of_tree"
 path = "asset3d_out_of_tree.rs"
 
 [[bin]]
+name = "box2d_simple"
+path = "box2d_simple.rs"
+
+[[bin]]
 name = "box3d_simple"
 path = "box3d_simple.rs"
 
@@ -132,8 +136,8 @@ name = "point3d_simple"
 path = "point3d_simple.rs"
 
 [[bin]]
-name = "box2d_simple"
-path = "box2d_simple.rs"
+name = "quick_start_connect"
+path = "quick_start_connect.rs"
 
 [[bin]]
 name = "scalar_simple"
@@ -146,10 +150,6 @@ path = "scalar_multiple_plots.rs"
 [[bin]]
 name = "segmentation_image_simple"
 path = "segmentation_image_simple.rs"
-
-[[bin]]
-name = "tensor_one_dim"
-path = "tensor_one_dim.rs"
 
 [[bin]]
 name = "tensor_simple"
@@ -178,5 +178,4 @@ path = "view_coordinates_simple.rs"
 [dependencies]
 ndarray.workspace = true
 rand.workspace = true
-rand_distr.workspace = true
 rerun = { path = "../../crates/rerun", features = ["native_viewer"] }

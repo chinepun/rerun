@@ -1,26 +1,25 @@
 //! Upload tensors to [`re_renderer`].
 
+use std::borrow::Cow;
+
 use anyhow::Context;
-use re_data_store::VersionedInstancePathHash;
+use bytemuck::{allocation::pod_collect_to_vec, cast_slice, Pod};
+use egui::util::hash;
+use wgpu::TextureFormat;
+
+use re_log_types::RowId;
+use re_renderer::{
+    pad_rgb_to_rgba,
+    renderer::{ColorMapper, ColormappedTexture, ShaderDecoding},
+    resource_managers::Texture2DCreationDesc,
+    RenderContext,
+};
+use re_types::tensor_data::DecodedTensor;
 use re_types::{
     components::ClassId,
     datatypes::{TensorBuffer, TensorData},
     tensor_data::TensorDataMeaning,
 };
-
-use std::borrow::Cow;
-
-use bytemuck::{allocation::pod_collect_to_vec, cast_slice, Pod};
-use egui::util::hash;
-use wgpu::TextureFormat;
-
-use re_renderer::{
-    pad_rgb_to_rgba,
-    renderer::{ColorMapper, ColormappedTexture},
-    resource_managers::Texture2DCreationDesc,
-    RenderContext,
-};
-use re_types::tensor_data::DecodedTensor;
 
 use crate::{Annotations, DefaultColor, TensorStats};
 
@@ -37,7 +36,7 @@ use super::{get_or_create_texture, try_get_or_create_texture};
 pub fn tensor_to_gpu(
     render_ctx: &RenderContext,
     debug_name: &str,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     meaning: TensorDataMeaning,
     tensor_stats: &TensorStats,
@@ -54,14 +53,14 @@ pub fn tensor_to_gpu(
         TensorDataMeaning::Unknown => color_tensor_to_gpu(
             render_ctx,
             debug_name,
-            tensor_path_hash,
+            tensor_data_row_id,
             tensor,
             tensor_stats,
         ),
         TensorDataMeaning::ClassId => class_id_tensor_to_gpu(
             render_ctx,
             debug_name,
-            tensor_path_hash,
+            tensor_data_row_id,
             tensor,
             tensor_stats,
             annotations,
@@ -69,7 +68,7 @@ pub fn tensor_to_gpu(
         TensorDataMeaning::Depth => depth_tensor_to_gpu(
             render_ctx,
             debug_name,
-            tensor_path_hash,
+            tensor_data_row_id,
             tensor,
             tensor_stats,
         ),
@@ -82,14 +81,19 @@ pub fn tensor_to_gpu(
 pub fn color_tensor_to_gpu(
     render_ctx: &RenderContext,
     debug_name: &str,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
 ) -> anyhow::Result<ColormappedTexture> {
-    let [height, width, depth] = height_width_depth(tensor)?;
+    re_tracing::profile_function!();
+    let texture_key = hash(tensor_data_row_id);
+    let [height, width, depth] = texture_height_width_channels(tensor)?;
 
-    let texture_handle = try_get_or_create_texture(render_ctx, hash(tensor_path_hash), || {
+    let texture_handle = try_get_or_create_texture(render_ctx, texture_key, || {
         let (data, format) = match (depth, &tensor.buffer) {
+            (3, TensorBuffer::Nv12(buf)) => {
+                (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Uint)
+            }
             // Normalize sRGB(A) textures to 0-1 range, and let the GPU premultiply alpha.
             // Why? Because premul must happen _before_ sRGB decode, so we can't
             // use a "Srgb-aware" texture like `Rgba8UnormSrgb` for RGBA.
@@ -113,13 +117,21 @@ pub fn color_tensor_to_gpu(
             height,
         })
     })
-    .map_err(|err| anyhow::anyhow!("Failed to create texture for color tensor: {err}"))?;
+    .map_err(|err| anyhow::anyhow!("{err}"))?;
 
     let texture_format = texture_handle.format();
-
+    let shader_decoding = match &tensor.buffer {
+        &TensorBuffer::Nv12(_) => Some(ShaderDecoding::Nv12),
+        _ => None,
+    };
     // TODO(emilk): let the user specify the color space.
-    let decode_srgb = texture_format == TextureFormat::Rgba8Unorm
-        || super::tensor_decode_srgb_gamma_heuristic(tensor_stats, tensor.dtype(), depth)?;
+    let decode_srgb = match shader_decoding {
+        Some(ShaderDecoding::Nv12) => true,
+        None => {
+            texture_format == TextureFormat::Rgba8Unorm
+                || super::tensor_decode_srgb_gamma_heuristic(tensor_stats, tensor.dtype(), depth)?
+        }
+    };
 
     // Special casing for normalized textures used above:
     let range = if matches!(
@@ -129,12 +141,14 @@ pub fn color_tensor_to_gpu(
         [0.0, 1.0]
     } else if texture_format == TextureFormat::R8Snorm {
         [-1.0, 1.0]
+    } else if shader_decoding == Some(ShaderDecoding::Nv12) {
+        [0.0, 1.0]
     } else {
         // TODO(#2341): The range should be determined by a `DataRange` component. In absence this, heuristics apply.
         super::tensor_data_range_heuristic(tensor_stats, tensor.dtype())?
     };
 
-    let color_mapper = if texture_format.components() == 1 {
+    let color_mapper = if shader_decoding.is_none() && texture_format.components() == 1 {
         // Single-channel images = luminance = grayscale
         Some(ColorMapper::Function(re_renderer::Colormap::Grayscale))
     } else {
@@ -144,14 +158,16 @@ pub fn color_tensor_to_gpu(
     // TODO(wumpf): There should be a way to specify whether a texture uses pre-multiplied alpha or not.
     // Assume that the texture is not pre-multiplied if it has an alpha channel.
     let multiply_rgb_with_alpha = depth == 4;
+    let gamma = 1.0;
 
     Ok(ColormappedTexture {
         texture: texture_handle,
         range,
         decode_srgb,
         multiply_rgb_with_alpha,
-        gamma: 1.0,
+        gamma,
         color_mapper,
+        shader_decoding,
     })
 }
 
@@ -161,12 +177,15 @@ pub fn color_tensor_to_gpu(
 pub fn class_id_tensor_to_gpu(
     render_ctx: &RenderContext,
     debug_name: &str,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
     annotations: &Annotations,
 ) -> anyhow::Result<ColormappedTexture> {
-    let [_height, _width, depth] = height_width_depth(tensor)?;
+    re_tracing::profile_function!();
+    let texture_key = hash(tensor_data_row_id);
+
+    let [_height, _width, depth] = texture_height_width_channels(tensor)?;
     anyhow::ensure!(
         depth == 1,
         "Cannot apply annotations to tensor of shape {:?}",
@@ -212,10 +231,10 @@ pub fn class_id_tensor_to_gpu(
         })
         .context("Failed to create class_id_colormap.")?;
 
-    let main_texture_handle = try_get_or_create_texture(render_ctx, hash(tensor_path_hash), || {
+    let main_texture_handle = try_get_or_create_texture(render_ctx, texture_key, || {
         general_texture_creation_desc_from_tensor(debug_name, tensor)
     })
-    .map_err(|err| anyhow::anyhow!("Failed to create texture for class id tensor: {err}"))?;
+    .map_err(|err| anyhow::anyhow!("{err}"))?;
 
     Ok(ColormappedTexture {
         texture: main_texture_handle,
@@ -224,6 +243,7 @@ pub fn class_id_tensor_to_gpu(
         multiply_rgb_with_alpha: false, // already premultiplied!
         gamma: 1.0,
         color_mapper: Some(ColorMapper::Texture(colormap_texture_handle)),
+        shader_decoding: None,
     })
 }
 
@@ -233,11 +253,14 @@ pub fn class_id_tensor_to_gpu(
 pub fn depth_tensor_to_gpu(
     render_ctx: &RenderContext,
     debug_name: &str,
-    tensor_path_hash: VersionedInstancePathHash,
+    tensor_data_row_id: RowId,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
 ) -> anyhow::Result<ColormappedTexture> {
-    let [_height, _width, depth] = height_width_depth(tensor)?;
+    re_tracing::profile_function!();
+    let texture_key = hash(tensor_data_row_id);
+
+    let [_height, _width, depth] = texture_height_width_channels(tensor)?;
     anyhow::ensure!(
         depth == 1,
         "Depth tensor of weird shape: {:?}",
@@ -245,7 +268,7 @@ pub fn depth_tensor_to_gpu(
     );
     let (min, max) = depth_tensor_range(tensor, tensor_stats)?;
 
-    let texture = try_get_or_create_texture(render_ctx, hash(tensor_path_hash), || {
+    let texture = try_get_or_create_texture(render_ctx, texture_key, || {
         general_texture_creation_desc_from_tensor(debug_name, tensor)
     })
     .map_err(|err| anyhow::anyhow!("Failed to create depth tensor texture: {err}"))?;
@@ -257,6 +280,7 @@ pub fn depth_tensor_to_gpu(
         multiply_rgb_with_alpha: false,
         gamma: 1.0,
         color_mapper: Some(ColorMapper::Function(re_renderer::Colormap::Turbo)),
+        shader_decoding: None,
     })
 }
 
@@ -297,7 +321,7 @@ fn general_texture_creation_desc_from_tensor<'a>(
     debug_name: &str,
     tensor: &'a DecodedTensor,
 ) -> anyhow::Result<Texture2DCreationDesc<'a>> {
-    let [height, width, depth] = height_width_depth(tensor)?;
+    let [height, width, depth] = texture_height_width_channels(tensor)?;
 
     let (data, format) = match depth {
         1 => {
@@ -318,6 +342,10 @@ fn general_texture_creation_desc_from_tensor<'a>(
 
                 TensorBuffer::Jpeg(_) => {
                     unreachable!("DecodedTensor cannot contain a JPEG")
+                }
+
+                TensorBuffer::Nv12(_) => {
+                    unreachable!("An NV12 tensor can only contain a 3 channel image.")
                 }
             }
         }
@@ -340,6 +368,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
 
                 TensorBuffer::Jpeg(_) => {
                     unreachable!("DecodedTensor cannot contain a JPEG")
+                }
+                TensorBuffer::Nv12(_) => {
+                    unreachable!("An NV12 tensor can only contain a 3 channel image.")
                 }
             }
         }
@@ -384,6 +415,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 TensorBuffer::Jpeg(_) => {
                     unreachable!("DecodedTensor cannot contain a JPEG")
                 }
+                TensorBuffer::Nv12(buf) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                }
             }
         }
         4 => {
@@ -405,6 +439,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
 
                 TensorBuffer::Jpeg(_) => {
                     unreachable!("DecodedTensor cannot contain a JPEG")
+                }
+                TensorBuffer::Nv12(_) => {
+                    unreachable!("An NV12 tensor can only contain a 3 channel image.")
                 }
             }
         }
@@ -480,11 +517,16 @@ fn pad_and_narrow_and_cast<T: Copy + Pod>(
 
 // ----------------------------------------------------------------------------;
 
-fn height_width_depth(tensor: &TensorData) -> anyhow::Result<[u32; 3]> {
+fn texture_height_width_channels(tensor: &TensorData) -> anyhow::Result<[u32; 3]> {
     use anyhow::Context as _;
 
-    let Some([height, width, channel]) = tensor.image_height_width_channels() else {
+    let Some([mut height, width, channel]) = tensor.image_height_width_channels() else {
         anyhow::bail!("Tensor is not an image");
+    };
+    height = match tensor.buffer {
+        // Correct the texture height for NV12, tensor.image_height_width_channels returns the RGB size for NV12 images. The actual texture size has dimensions (h*3/2, w, 1).
+        TensorBuffer::Nv12(_) => height * 3 / 2,
+        _ => height,
     };
 
     let [height, width] = [

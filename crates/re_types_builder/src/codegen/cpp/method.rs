@@ -1,9 +1,9 @@
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::Docs;
 
-use super::{quote_doc_comment, quote_docstrings, NEWLINE_TOKEN};
+use super::{lines_from_docs, quote_doc_comment, quote_doc_lines, NEWLINE_TOKEN};
 
 #[derive(Default)]
 pub struct MethodDeclaration {
@@ -38,7 +38,7 @@ impl MethodDeclaration {
         }
     }
 
-    pub fn to_cpp_tokens(&self, class_or_struct_name: &Ident) -> TokenStream {
+    pub fn to_cpp_tokens(&self, class_or_struct_name: &TokenStream) -> TokenStream {
         let Self {
             is_static: _,
             return_type,
@@ -84,7 +84,10 @@ impl quote::ToTokens for MethodDocumentation {
             Self::String(s) => {
                 tokens.extend(quote_doc_comment(s));
             }
-            Self::Docs(docs) => tokens.extend(quote_docstrings(docs)),
+            Self::Docs(docs) => {
+                let lines = lines_from_docs(docs);
+                tokens.extend(quote_doc_lines(&lines));
+            }
         }
     }
 }
@@ -137,7 +140,7 @@ impl Method {
         }
     }
 
-    pub fn to_cpp_tokens(&self, class_or_struct_name: &Ident) -> TokenStream {
+    pub fn to_cpp_tokens(&self, class_or_struct_name: &TokenStream) -> TokenStream {
         let Self {
             docs: _,
             declaration,

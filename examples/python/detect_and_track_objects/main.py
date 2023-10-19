@@ -36,6 +36,55 @@ from transformers import (  # noqa: E402 module level import not at top of file
     DetrForSegmentation,
 )
 
+DESCRIPTION = """
+# Detect and Track Objects
+
+This is a more elaborate example applying simple object detection and segmentation on a video using the Huggingface
+`transformers` library. Tracking across frames is performed using [CSRT](https://arxiv.org/abs/1611.08461) from
+OpenCV. The results are visualized using Rerun.
+
+## How it was made
+The full source code for this example is available
+[on GitHub](https://github.com/rerun-io/rerun/blob/latest/examples/python/detect_and_track_objects/main.py).
+
+### Input Video
+The input video is logged as a sequence of
+[rr.Image objects](https://www.rerun.io/docs/reference/types/archetypes/image) to the
+[image/rgb entity](recording://image/rgb). Since the detection and segmentation model operates on smaller images the
+resized images are logged to the separate [image_scaled/rgb entity](recording://image_scaled/rgb). This allows us to
+subsequently visualize the segmentation mask on top of the video.
+
+### Segmentations
+The [segmentation result](recording://image_scaled/segmentation) is logged through a combination of two archetypes.
+The segmentation image itself is logged as an
+[rr.SegmentationImage archetype](https://www.rerun.io/docs/reference/types/archetypes/segmentation_image) and
+contains the id for each pixel. It is logged to the [image_scaled/segmentation entity](recording://image_scaled/segmentation).
+
+The color and label for each class is determined by the
+[rr.AnnotationContext archetype](https://www.rerun.io/docs/reference/types/archetypes/annotation_context) which is
+logged to the root entity using `rr.log("/", ..., timeless=True` as it should apply to the whole sequence and all
+entities that have a class id.
+
+### Detections
+The detections and tracked bounding boxes are visualized by logging the
+[rr.Boxes2D archetype](https://www.rerun.io/docs/reference/types/archetypes/boxes2d) to Rerun.
+
+The color and label of the bounding boxes is determined by their class id, relying on the same
+[rr.AnnotationContext archetype](https://www.rerun.io/docs/reference/types/archetypes/annotation_context) as the
+segmentation images. This ensures that a bounding box and a segmentation image with the same class id will also have the
+same color.
+
+Note that it is also possible to log multiple annotation contexts should different colors and / or labels be desired.
+The annotation context is resolved by seeking up the entity hierarchy.
+
+### Text Log
+Through the [rr.TextLog archetype] text at different importance level can be logged. Rerun integrates with the
+[Python logging module](https://docs.python.org/3/library/logging.html). After an initial setup that is described on the
+[rr.TextLog page](https://www.rerun.io/docs/reference/types/archetypes/text_log#textlogintegration), statements
+such as `logging.info("...")`, `logging.debug("...")`, etc. will show up in the Rerun viewer. In the viewer you can
+adjust the filter level and look at the messages time-synchronized with respect to other logged data.
+""".strip()
+
 
 @dataclass
 class Detection:
@@ -85,7 +134,7 @@ class Detector:
         _, _, scaled_height, scaled_width = inputs["pixel_values"].shape
         scaled_size = (scaled_width, scaled_height)
         rgb_scaled = cv2.resize(rgb, scaled_size)
-        rr.log_image("image_scaled/rgb", rgb_scaled, jpeg_quality=85)
+        rr.log("image_scaled/rgb", rr.Image(rgb_scaled).compress(jpeg_quality=85))
 
         logging.debug("Pass image to detection network")
         outputs = self.model(**inputs)
@@ -98,7 +147,7 @@ class Detector:
         )[0]
 
         mask = segmentation_mask.detach().cpu().numpy().astype(np.uint8)
-        rr.log_segmentation_image("image_scaled/segmentation", mask)
+        rr.log("image_scaled/segmentation", rr.SegmentationImage(mask))
 
         boxes = detections["boxes"].detach().cpu().numpy()
         class_ids = detections["labels"].detach().cpu().numpy()
@@ -128,20 +177,24 @@ class Detector:
 
         thing_boxes = boxes[things_np, :]
         thing_class_ids = class_ids_np[things_np]
-        rr.log_rects(
+        rr.log(
             "image_scaled/detections/things",
-            thing_boxes,
-            rect_format=rr.RectFormat.XYXY,
-            class_ids=thing_class_ids,
+            rr.Boxes2D(
+                array=thing_boxes,
+                array_format=rr.Box2DFormat.XYXY,
+                class_ids=thing_class_ids,
+            ),
         )
 
         background_boxes = boxes[~things_np, :]
         background_class_ids = class_ids[~things_np]
-        rr.log_rects(
+        rr.log(
             "image_scaled/detections/background",
-            background_boxes,
-            rect_format=rr.RectFormat.XYXY,
-            class_ids=background_class_ids,
+            rr.Boxes2D(
+                array=background_boxes,
+                array_format=rr.Box2DFormat.XYXY,
+                class_ids=background_class_ids,
+            ),
         )
 
 
@@ -188,14 +241,16 @@ class Tracker:
 
     def log_tracked(self) -> None:
         if self.is_tracking:
-            rr.log_rect(
+            rr.log(
                 f"image/tracked/{self.tracking_id}",
-                self.tracked.bbox_xywh,
-                rect_format=rr.RectFormat.XYWH,
-                class_id=self.tracked.class_id,
+                rr.Boxes2D(
+                    array=self.tracked.bbox_xywh,
+                    array_format=rr.Box2DFormat.XYWH,
+                    class_ids=self.tracked.class_id,
+                ),
             )
         else:
-            rr.log_rect(f"image/tracked/{self.tracking_id}", [])
+            rr.log(f"image/tracked/{self.tracking_id}", rr.Clear(recursive=False))  # TODO(#3381)
 
     def update_with_detection(self, detection: Detection, bgr: npt.NDArray[np.uint8]) -> None:
         self.num_recent_undetected_frames = 0
@@ -308,13 +363,13 @@ def update_trackers_with_detections(
     return updated_trackers
 
 
-def track_objects(video_path: str) -> None:
+def track_objects(video_path: str, *, max_frame_count: int | None) -> None:
     with open(COCO_CATEGORIES_PATH) as f:
         coco_categories = json.load(f)
     class_descriptions = [
         rr.AnnotationInfo(id=cat["id"], color=cat["color"], label=cat["name"]) for cat in coco_categories
     ]
-    rr.log_annotation_context("/", class_descriptions, timeless=True)
+    rr.log("/", rr.AnnotationContext(class_descriptions), timeless=True)
 
     detector = Detector(coco_categories=coco_categories)
 
@@ -325,6 +380,9 @@ def track_objects(video_path: str) -> None:
     label_strs = [cat["name"] or str(cat["id"]) for cat in coco_categories]
     trackers: list[Tracker] = []
     while cap.isOpened():
+        if max_frame_count is not None and frame_idx >= max_frame_count:
+            break
+
         ret, bgr = cap.read()
         rr.set_time_sequence("frame", frame_idx)
 
@@ -333,7 +391,7 @@ def track_objects(video_path: str) -> None:
             break
 
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        rr.log_image("image/rgb", rgb, jpeg_quality=85)
+        rr.log("image/rgb", rr.Image(rgb).compress(jpeg_quality=85))
 
         if not trackers or frame_idx % 40 == 0:
             detections = detector.detect_objects_to_track(rgb=rgb, frame_idx=frame_idx)
@@ -390,6 +448,11 @@ def main() -> None:
     )
     parser.add_argument("--dataset_dir", type=Path, default=DATASET_DIR, help="Directory to save example videos to.")
     parser.add_argument("--video_path", type=str, default="", help="Full path to video to run on. Overrides `--video`.")
+    parser.add_argument(
+        "--max-frame",
+        type=int,
+        help="Stop after processing this many frames. If not specified, will run until interrupted.",
+    )
     rr.script_add_args(parser)
     args = parser.parse_args()
 
@@ -397,11 +460,13 @@ def main() -> None:
 
     setup_logging()
 
+    rr.log("description", rr.TextDocument(DESCRIPTION, media_type=rr.MediaType.MARKDOWN), timeless=True)
+
     video_path: str = args.video_path
     if not video_path:
         video_path = get_downloaded_path(args.dataset_dir, args.video)
 
-    track_objects(video_path)
+    track_objects(video_path, max_frame_count=args.max_frame)
 
     rr.script_teardown(args)
 

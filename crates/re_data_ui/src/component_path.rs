@@ -16,9 +16,9 @@ impl DataUi for ComponentPath {
             component_name,
         } = self;
 
-        let store = &ctx.store_db.entity_db.data_store;
+        let store = ctx.store_db.store();
 
-        if let Some(archetype_name) = crate::indicator_component_archetype(component_name) {
+        if let Some(archetype_name) = component_name.indicator_component_archetype() {
             ui.label(format!(
                 "Indicator component for the {archetype_name} archetype"
             ));
@@ -30,7 +30,7 @@ impl DataUi for ComponentPath {
                 component_data,
             }
             .data_ui(ctx, ui, verbosity, query);
-        } else if let Some(entity_tree) = ctx.store_db.entity_db.tree.subtree(entity_path) {
+        } else if let Some(entity_tree) = ctx.store_db.entity_db().tree.subtree(entity_path) {
             if entity_tree.components.contains_key(component_name) {
                 ui.label("<unset>");
             } else {
@@ -41,7 +41,7 @@ impl DataUi for ComponentPath {
         } else {
             ui.label(
                 ctx.re_ui
-                    .error_text(format!("Unknown entity: {entity_path:?}")),
+                    .error_text(format!("Unknown component path: {self}")),
             );
         }
     }

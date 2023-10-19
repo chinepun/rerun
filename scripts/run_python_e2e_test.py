@@ -48,7 +48,6 @@ def main() -> None:
             "examples/python/minimal_options/requirements.txt",
             "examples/python/multithreading/requirements.txt",
             "examples/python/plots/requirements.txt",
-            "examples/python/text_logging/requirements.txt",
         ]
 
         print("----------------------------------------------------------")
@@ -67,7 +66,6 @@ def main() -> None:
         ("examples/python/minimal_options/main.py", []),
         ("examples/python/multithreading/main.py", []),
         ("examples/python/plots/main.py", []),
-        ("examples/python/text_logging/main.py", []),
     ]
 
     for example, args in examples:
@@ -83,18 +81,22 @@ def main() -> None:
     print("All tests passed successfully!")
 
 
-def run_example(example: str, args: list[str]) -> None:
+def run_example(example: str, extra_args: list[str]) -> None:
     # sys.executable: the absolute path of the executable binary for the Python interpreter
     python_executable = sys.executable
     if python_executable is None:
         python_executable = "python3"
 
-    rerun_process = subprocess.Popen(
-        [python_executable, "-m", "rerun", "--port", str(PORT), "--strict", "--test-receive"]
-    )
-    time.sleep(0.3)  # Wait for rerun server to start to remove a logged warning
+    env = os.environ.copy()
+    env["RERUN_STRICT"] = "1"
+    env["RERUN_PANIC_ON_WARN"] = "1"
 
-    python_process = subprocess.Popen([python_executable, example, "--connect", "--addr", f"127.0.0.1:{PORT}"] + args)
+    cmd = [python_executable, "-m", "rerun", "--port", str(PORT), "--test-receive"]
+    rerun_process = subprocess.Popen(cmd, env=env)
+    time.sleep(0.5)  # Wait for rerun server to start to remove a logged warning
+
+    cmd = [python_executable, example, "--connect", "--addr", f"127.0.0.1:{PORT}"] + extra_args
+    python_process = subprocess.Popen(cmd, env=env)
 
     print("Waiting for python process to finish…")
     returncode = python_process.wait(timeout=30)

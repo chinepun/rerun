@@ -5,7 +5,9 @@ use std::{
 
 use crossbeam::channel::{Receiver, Sender};
 
-use crate::{DataRow, DataTable, SizeBytes, TableId};
+use re_types_core::SizeBytes as _;
+
+use crate::{DataRow, DataTable, TableId};
 
 // ---
 
@@ -32,7 +34,7 @@ pub type DataTableBatcherResult<T> = Result<T, DataTableBatcherError>;
 
 // ---
 
-/// Defines the the different thresholds of the associated [`DataTableBatcher`].
+/// Defines the different thresholds of the associated [`DataTableBatcher`].
 ///
 /// See [`Self::default`] and [`Self::from_env`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -396,7 +398,7 @@ fn batching_thread(
 
     fn do_push_row(acc: &mut Accumulator, mut row: DataRow) {
         // TODO(#1760): now that we're re doing this here, it really is a massive waste not to send
-        // it over the wire...
+        // it over the wire…
         row.compute_all_size_bytes();
 
         acc.pending_num_rows += 1;

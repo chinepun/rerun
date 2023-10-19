@@ -14,11 +14,16 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// A single dimension within a multi-dimensional tensor.
+use ::re_types_core::external::arrow2;
+
+/// **Datatype**: A single dimension within a multi-dimensional tensor.
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct TensorDimension {
+    /// The length of this dimension.
     pub size: u64,
-    pub name: Option<crate::ArrowString>,
+
+    /// The name of this dimension, e.g. "width", "height", "channel", "batch', ….
+    pub name: Option<::re_types_core::ArrowString>,
 }
 
 impl<'a> From<TensorDimension> for ::std::borrow::Cow<'a, TensorDimension> {
@@ -35,8 +40,8 @@ impl<'a> From<&'a TensorDimension> for ::std::borrow::Cow<'a, TensorDimension> {
     }
 }
 
-impl crate::Loggable for TensorDimension {
-    type Name = crate::DatatypeName;
+impl ::re_types_core::Loggable for TensorDimension {
+    type Name = ::re_types_core::DatatypeName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -46,7 +51,7 @@ impl crate::Loggable for TensorDimension {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::Struct(vec![
             Field {
                 name: "size".to_owned(),
@@ -66,13 +71,13 @@ impl crate::Loggable for TensorDimension {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -81,7 +86,7 @@ impl crate::Loggable for TensorDimension {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -99,7 +104,7 @@ impl crate::Loggable for TensorDimension {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let size_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let size_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -124,14 +129,14 @@ impl crate::Loggable for TensorDimension {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let name_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let name_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
                         {
-                            let inner_data: ::arrow2::buffer::Buffer<u8> =
+                            let inner_data: arrow2::buffer::Buffer<u8> =
                                 name.iter().flatten().flat_map(|s| s.0.clone()).collect();
-                            let offsets = ::arrow2::offset::Offsets::<i32>::try_from_lengths(
+                            let offsets = arrow2::offset::Offsets::<i32>::try_from_lengths(
                                 name.iter().map(|opt| {
                                     opt.as_ref().map(|datum| datum.0.len()).unwrap_or_default()
                                 }),
@@ -159,20 +164,20 @@ impl crate::Loggable for TensorDimension {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok({
             let arrow_data = arrow_data
                 .as_any()
-                .downcast_ref::<::arrow2::array::StructArray>()
+                .downcast_ref::<arrow2::array::StructArray>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::Struct(vec![
                             Field {
                                 name: "size".to_owned(),
@@ -203,7 +208,7 @@ impl crate::Loggable for TensorDimension {
                     .collect();
                 let size = {
                     if !arrays_by_name.contains_key("size") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "size",
                         ))
@@ -214,7 +219,7 @@ impl crate::Loggable for TensorDimension {
                         .as_any()
                         .downcast_ref::<UInt64Array>()
                         .ok_or_else(|| {
-                            crate::DeserializationError::datatype_mismatch(
+                            ::re_types_core::DeserializationError::datatype_mismatch(
                                 DataType::UInt64,
                                 arrow_data.data_type().clone(),
                             )
@@ -225,7 +230,7 @@ impl crate::Loggable for TensorDimension {
                 };
                 let name = {
                     if !arrays_by_name.contains_key("name") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "name",
                         ))
@@ -235,9 +240,9 @@ impl crate::Loggable for TensorDimension {
                     {
                         let arrow_data = arrow_data
                             .as_any()
-                            .downcast_ref::<::arrow2::array::Utf8Array<i32>>()
+                            .downcast_ref::<arrow2::array::Utf8Array<i32>>()
                             .ok_or_else(|| {
-                                crate::DeserializationError::datatype_mismatch(
+                                ::re_types_core::DeserializationError::datatype_mismatch(
                                     DataType::Utf8,
                                     arrow_data.data_type().clone(),
                                 )
@@ -254,10 +259,12 @@ impl crate::Loggable for TensorDimension {
                                 let start = *start as usize;
                                 let end = start + len;
                                 if end as usize > arrow_data_buf.len() {
-                                    return Err(crate::DeserializationError::offset_slice_oob(
-                                        (start, end),
-                                        arrow_data_buf.len(),
-                                    ));
+                                    return Err(
+                                        ::re_types_core::DeserializationError::offset_slice_oob(
+                                            (start, end),
+                                            arrow_data_buf.len(),
+                                        ),
+                                    );
                                 }
 
                                 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
@@ -268,9 +275,11 @@ impl crate::Loggable for TensorDimension {
                             .transpose()
                         })
                         .map(|res_or_opt| {
-                            res_or_opt.map(|res_or_opt| res_or_opt.map(|v| crate::ArrowString(v)))
+                            res_or_opt.map(|res_or_opt| {
+                                res_or_opt.map(|v| ::re_types_core::ArrowString(v))
+                            })
                         })
-                        .collect::<crate::DeserializationResult<Vec<Option<_>>>>()
+                        .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()
                         .with_context("rerun.datatypes.TensorDimension#name")?
                         .into_iter()
                     }
@@ -283,14 +292,14 @@ impl crate::Loggable for TensorDimension {
                     opt.map(|(size, name)| {
                         Ok(Self {
                             size: size
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context("rerun.datatypes.TensorDimension#size")?,
                             name,
                         })
                     })
                     .transpose()
                 })
-                .collect::<crate::DeserializationResult<Vec<_>>>()
+                .collect::<::re_types_core::DeserializationResult<Vec<_>>>()
                 .with_context("rerun.datatypes.TensorDimension")?
             }
         })

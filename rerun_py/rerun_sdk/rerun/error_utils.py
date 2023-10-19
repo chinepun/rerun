@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import os
 import threading
 import warnings
 from types import TracebackType
@@ -10,14 +11,29 @@ from typing import Any, Callable, TypeVar, cast
 from .recording_stream import RecordingStream
 
 __all__ = [
-    "_send_warning",
+    "_send_warning_or_raise",
 ]
 
 _TFunc = TypeVar("_TFunc", bound=Callable[..., Any])
 
+
+def default_strict_mode() -> bool:
+    if "RERUN_STRICT" in os.environ:
+        var = os.environ["RERUN_STRICT"].lower()
+        if var in ("0", "false", "off", "no"):
+            return False
+        elif var in ("1", "true", "on", "yes"):
+            return True
+        else:
+            print(f"Expected RERUN_STRICT to be one of 0/1 false/true off/on no/yes, found {var}")
+            return _strict_mode
+    else:
+        return False
+
+
 # If `True`, we raise exceptions on use error (wrong parameter types, etc.).
 # If `False` we catch all errors and log a warning instead.
-_strict_mode = False
+_strict_mode = default_strict_mode()
 
 _rerun_exception_ctx = threading.local()
 
@@ -30,7 +46,8 @@ def strict_mode() -> bool:
     will result in exception being raised.
     When strict mode is on, such problems are instead logged as warnings.
 
-    The default is OFF.
+    The default is controlled with the `RERUN_STRICT` environment variable,
+    or `False` if it is not set.
     """
     # If strict was set explicitly, we are in struct mode
     if getattr(_rerun_exception_ctx, "strict_mode", None) is not None:
@@ -47,7 +64,8 @@ def set_strict_mode(mode: bool) -> None:
     will result in exception being raised.
     When strict mode is off, such problems are instead logged as warnings.
 
-    The default is OFF.
+    The default is controlled with the `RERUN_STRICT` environment variable,
+    or `False` if it is not set.
     """
     global _strict_mode
 
@@ -66,23 +84,32 @@ def _build_warning_context_string(skip_first: int) -> str:
     return "\n".join(f'File "{frame.filename}", line {frame.lineno}, in {frame.function}' for frame in outer_stack)
 
 
-def _send_warning(
+def _send_warning_or_raise(
     message: str,
     depth_to_user_code: int,
     recording: RecordingStream | None = None,
+    exception_type: type[Exception] = ValueError,
 ) -> None:
     """
     Sends a warning about the usage of the Rerun SDK.
 
-    Used for recoverable problems.
-    You can also use this for unrecoverable problems,
-    or raise an exception and let the @log_decorator handle it instead.
+    Note: in strict mode this will instead raise the specified exception type
+    (defaults to ValueError).
+
+    This will both send a message to the Rerun viewer and log a warning using
+    `warning.warn` with a custom `RerunWarning` class.
+
+    This should generally be used for recoverable problems where you want execution
+    to continue in the local scope.
+
+    For unrecoverable problems where execution cannot otherwise continue, you should
+    instead raise an exception and let the `catch_and_log_exceptions` handle it.
     """
     from rerun._log import log
     from rerun.archetypes import TextLog
 
     if strict_mode():
-        raise TypeError(message)
+        raise exception_type(message)
 
     # Send the warning to the user first
     warnings.warn(message, category=RerunWarning, stacklevel=depth_to_user_code + 1)
@@ -131,16 +158,23 @@ class catch_and_log_exceptions:
     """
 
     def __init__(
-        self, context: str | None = None, depth_to_user_code: int = 1, exception_return_value: Any = None
+        self,
+        context: str | None = None,
+        depth_to_user_code: int = 1,
+        exception_return_value: Any = None,
+        strict: bool | None = None,
     ) -> None:
         self.depth_to_user_code = depth_to_user_code
         self.context = context
         self.exception_return_value = exception_return_value
+        self.strict = strict
 
     def __enter__(self) -> catch_and_log_exceptions:
         # Track the original strict_mode setting in case it's being
         # overridden locally in this stack
         self.original_strict = getattr(_rerun_exception_ctx, "strict_mode", None)
+        if self.strict is not None:
+            _rerun_exception_ctx.strict_mode = self.strict
         if getattr(_rerun_exception_ctx, "depth", None) is None:
             _rerun_exception_ctx.depth = 1
         else:
@@ -192,7 +226,7 @@ class catch_and_log_exceptions:
                     _rerun_exception_ctx.depth = None
 
                     for warning in pending_warnings:
-                        _send_warning(warning, depth_to_user_code=self.depth_to_user_code + 2)
+                        _send_warning_or_raise(warning, depth_to_user_code=self.depth_to_user_code + 2)
 
             # If we're back to the top of the stack, send out the pending warnings
 

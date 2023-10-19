@@ -14,7 +14,9 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// Representation of an affine transform via a 3x3 affine matrix paired with a translation.
+use ::re_types_core::external::arrow2;
+
+/// **Datatype**: Representation of an affine transform via a 3x3 affine matrix paired with a translation.
 ///
 /// First applies the matrix, then the translation.
 #[derive(Clone, Debug, Copy, PartialEq)]
@@ -23,10 +25,12 @@ pub struct TranslationAndMat3x3 {
     pub translation: Option<crate::datatypes::Vec3D>,
 
     /// 3x3 matrix for scale, rotation & shear.
-    pub matrix: Option<crate::datatypes::Mat3x3>,
+    pub mat3x3: Option<crate::datatypes::Mat3x3>,
 
-    /// If true, the transform maps from the parent space to the space where the transform was logged.
-    /// Otherwise, the transform maps from the space to its parent.
+    /// If true, this transform is from the parent space to the space where the transform was logged.
+    ///
+    /// If false (default), the transform maps from this space to its parent,
+    /// i.e. the translation is the position in the parent space.
     pub from_parent: bool,
 }
 
@@ -44,8 +48,8 @@ impl<'a> From<&'a TranslationAndMat3x3> for ::std::borrow::Cow<'a, TranslationAn
     }
 }
 
-impl crate::Loggable for TranslationAndMat3x3 {
-    type Name = crate::DatatypeName;
+impl ::re_types_core::Loggable for TranslationAndMat3x3 {
+    type Name = ::re_types_core::DatatypeName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -55,7 +59,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::Struct(vec![
             Field {
                 name: "translation".to_owned(),
@@ -64,7 +68,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                 metadata: [].into(),
             },
             Field {
-                name: "matrix".to_owned(),
+                name: "mat3x3".to_owned(),
                 data_type: <crate::datatypes::Mat3x3>::arrow_datatype(),
                 is_nullable: true,
                 metadata: [].into(),
@@ -81,13 +85,13 @@ impl crate::Loggable for TranslationAndMat3x3 {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -96,7 +100,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -117,7 +121,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let translation_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let translation_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -136,7 +140,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 .flatten()
                                 .map(Some)
                                 .collect();
-                            let translation_inner_bitmap: Option<::arrow2::bitmap::Bitmap> =
+                            let translation_inner_bitmap: Option<arrow2::bitmap::Bitmap> =
                                 translation_bitmap.as_ref().map(|bitmap| {
                                     bitmap
                                         .iter()
@@ -170,26 +174,26 @@ impl crate::Loggable for TranslationAndMat3x3 {
                         }
                     },
                     {
-                        let (somes, matrix): (Vec<_>, Vec<_>) = data
+                        let (somes, mat3x3): (Vec<_>, Vec<_>) = data
                             .iter()
                             .map(|datum| {
                                 let datum = datum
                                     .as_ref()
                                     .map(|datum| {
-                                        let Self { matrix, .. } = &**datum;
-                                        matrix.clone()
+                                        let Self { mat3x3, .. } = &**datum;
+                                        mat3x3.clone()
                                     })
                                     .flatten();
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let matrix_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let mat3x3_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
                         {
                             use arrow2::{buffer::Buffer, offset::OffsetsBuffer};
-                            let matrix_inner_data: Vec<_> = matrix
+                            let mat3x3_inner_data: Vec<_> = mat3x3
                                 .iter()
                                 .map(|datum| {
                                     datum
@@ -202,8 +206,8 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 .flatten()
                                 .map(Some)
                                 .collect();
-                            let matrix_inner_bitmap: Option<::arrow2::bitmap::Bitmap> =
-                                matrix_bitmap.as_ref().map(|bitmap| {
+                            let mat3x3_inner_bitmap: Option<arrow2::bitmap::Bitmap> =
+                                mat3x3_bitmap.as_ref().map(|bitmap| {
                                     bitmap
                                         .iter()
                                         .map(|i| std::iter::repeat(i).take(9usize))
@@ -223,14 +227,14 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 ),
                                 PrimitiveArray::new(
                                     DataType::Float32,
-                                    matrix_inner_data
+                                    mat3x3_inner_data
                                         .into_iter()
                                         .map(|v| v.unwrap_or_default())
                                         .collect(),
-                                    matrix_inner_bitmap,
+                                    mat3x3_inner_bitmap,
                                 )
                                 .boxed(),
-                                matrix_bitmap,
+                                mat3x3_bitmap,
                             )
                             .boxed()
                         }
@@ -246,7 +250,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 (datum.is_some(), datum)
                             })
                             .unzip();
-                        let from_parent_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+                        let from_parent_bitmap: Option<arrow2::bitmap::Bitmap> = {
                             let any_nones = somes.iter().any(|some| !*some);
                             any_nones.then(|| somes.into())
                         };
@@ -269,20 +273,20 @@ impl crate::Loggable for TranslationAndMat3x3 {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok({
             let arrow_data = arrow_data
                 .as_any()
-                .downcast_ref::<::arrow2::array::StructArray>()
+                .downcast_ref::<arrow2::array::StructArray>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::Struct(vec![
                             Field {
                                 name: "translation".to_owned(),
@@ -291,7 +295,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 metadata: [].into(),
                             },
                             Field {
-                                name: "matrix".to_owned(),
+                                name: "mat3x3".to_owned(),
                                 data_type: <crate::datatypes::Mat3x3>::arrow_datatype(),
                                 is_nullable: true,
                                 metadata: [].into(),
@@ -319,7 +323,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                     .collect();
                 let translation = {
                     if !arrays_by_name.contains_key("translation") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "translation",
                         ))
@@ -329,9 +333,9 @@ impl crate::Loggable for TranslationAndMat3x3 {
                     {
                         let arrow_data = arrow_data
                             .as_any()
-                            .downcast_ref::<::arrow2::array::FixedSizeListArray>()
+                            .downcast_ref::<arrow2::array::FixedSizeListArray>()
                             .ok_or_else(|| {
-                                crate::DeserializationError::datatype_mismatch(
+                                ::re_types_core::DeserializationError::datatype_mismatch(
                                     DataType::FixedSizeList(
                                         Box::new(Field {
                                             name: "item".to_owned(),
@@ -357,7 +361,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                     .as_any()
                                     .downcast_ref::<Float32Array>()
                                     .ok_or_else(|| {
-                                        crate::DeserializationError::datatype_mismatch(
+                                        ::re_types_core::DeserializationError::datatype_mismatch(
                                             DataType::Float32,
                                             arrow_data_inner.data_type().clone(),
                                         )
@@ -377,10 +381,12 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 elem.map(|(start, end)| {
                                     debug_assert!(end - start == 3usize);
                                     if end as usize > arrow_data_inner.len() {
-                                        return Err(crate::DeserializationError::offset_slice_oob(
-                                            (start, end),
-                                            arrow_data_inner.len(),
-                                        ));
+                                        return Err(
+                                            ::re_types_core::DeserializationError::offset_slice_oob(
+                                                (start, end),
+                                                arrow_data_inner.len(),
+                                            ),
+                                        );
                                     }
 
                                     #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
@@ -398,26 +404,26 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                     res_or_opt.map(|v| crate::datatypes::Vec3D(v))
                                 })
                             })
-                            .collect::<crate::DeserializationResult<Vec<Option<_>>>>()?
+                            .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()?
                         }
                         .into_iter()
                     }
                 };
-                let matrix = {
-                    if !arrays_by_name.contains_key("matrix") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                let mat3x3 = {
+                    if !arrays_by_name.contains_key("mat3x3") {
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
-                            "matrix",
+                            "mat3x3",
                         ))
                         .with_context("rerun.datatypes.TranslationAndMat3x3");
                     }
-                    let arrow_data = &**arrays_by_name["matrix"];
+                    let arrow_data = &**arrays_by_name["mat3x3"];
                     {
                         let arrow_data = arrow_data
                             .as_any()
-                            .downcast_ref::<::arrow2::array::FixedSizeListArray>()
+                            .downcast_ref::<arrow2::array::FixedSizeListArray>()
                             .ok_or_else(|| {
-                                crate::DeserializationError::datatype_mismatch(
+                                ::re_types_core::DeserializationError::datatype_mismatch(
                                     DataType::FixedSizeList(
                                         Box::new(Field {
                                             name: "item".to_owned(),
@@ -430,7 +436,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                     arrow_data.data_type().clone(),
                                 )
                             })
-                            .with_context("rerun.datatypes.TranslationAndMat3x3#matrix")?;
+                            .with_context("rerun.datatypes.TranslationAndMat3x3#mat3x3")?;
                         if arrow_data.is_empty() {
                             Vec::new()
                         } else {
@@ -443,12 +449,12 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                     .as_any()
                                     .downcast_ref::<Float32Array>()
                                     .ok_or_else(|| {
-                                        crate::DeserializationError::datatype_mismatch(
+                                        ::re_types_core::DeserializationError::datatype_mismatch(
                                             DataType::Float32,
                                             arrow_data_inner.data_type().clone(),
                                         )
                                     })
-                                    .with_context("rerun.datatypes.TranslationAndMat3x3#matrix")?
+                                    .with_context("rerun.datatypes.TranslationAndMat3x3#mat3x3")?
                                     .into_iter()
                                     .map(|opt| opt.copied())
                                     .collect::<Vec<_>>()
@@ -461,10 +467,12 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                 elem.map(|(start, end)| {
                                     debug_assert!(end - start == 9usize);
                                     if end as usize > arrow_data_inner.len() {
-                                        return Err(crate::DeserializationError::offset_slice_oob(
-                                            (start, end),
-                                            arrow_data_inner.len(),
-                                        ));
+                                        return Err(
+                                            ::re_types_core::DeserializationError::offset_slice_oob(
+                                                (start, end),
+                                                arrow_data_inner.len(),
+                                            ),
+                                        );
                                     }
 
                                     #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
@@ -482,14 +490,14 @@ impl crate::Loggable for TranslationAndMat3x3 {
                                     res_or_opt.map(|v| crate::datatypes::Mat3x3(v))
                                 })
                             })
-                            .collect::<crate::DeserializationResult<Vec<Option<_>>>>()?
+                            .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()?
                         }
                         .into_iter()
                     }
                 };
                 let from_parent = {
                     if !arrays_by_name.contains_key("from_parent") {
-                        return Err(crate::DeserializationError::missing_struct_field(
+                        return Err(::re_types_core::DeserializationError::missing_struct_field(
                             Self::arrow_datatype(),
                             "from_parent",
                         ))
@@ -500,7 +508,7 @@ impl crate::Loggable for TranslationAndMat3x3 {
                         .as_any()
                         .downcast_ref::<BooleanArray>()
                         .ok_or_else(|| {
-                            crate::DeserializationError::datatype_mismatch(
+                            ::re_types_core::DeserializationError::datatype_mismatch(
                                 DataType::Boolean,
                                 arrow_data.data_type().clone(),
                             )
@@ -509,22 +517,22 @@ impl crate::Loggable for TranslationAndMat3x3 {
                         .into_iter()
                 };
                 arrow2::bitmap::utils::ZipValidity::new_with_validity(
-                    ::itertools::izip!(translation, matrix, from_parent),
+                    ::itertools::izip!(translation, mat3x3, from_parent),
                     arrow_data.validity(),
                 )
                 .map(|opt| {
-                    opt.map(|(translation, matrix, from_parent)| {
+                    opt.map(|(translation, mat3x3, from_parent)| {
                         Ok(Self {
                             translation,
-                            matrix,
+                            mat3x3,
                             from_parent: from_parent
-                                .ok_or_else(crate::DeserializationError::missing_data)
+                                .ok_or_else(::re_types_core::DeserializationError::missing_data)
                                 .with_context("rerun.datatypes.TranslationAndMat3x3#from_parent")?,
                         })
                     })
                     .transpose()
                 })
-                .collect::<crate::DeserializationResult<Vec<_>>>()
+                .collect::<::re_types_core::DeserializationResult<Vec<_>>>()
                 .with_context("rerun.datatypes.TranslationAndMat3x3")?
             }
         })

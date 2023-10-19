@@ -139,6 +139,7 @@ def main() -> None:
     # Sections:
     analytics = []
     bugs = []
+    cpp = []
     dependencies = []
     dev_experience = []
     docs = []
@@ -171,6 +172,8 @@ def main() -> None:
             misc.append(summary)
         else:
             title = pr_info.pr_title if pr_info else title  # We prefer the PR title if available
+            title = title.rstrip(".")  # Some people enjoy ending their titles with an unnecessary period
+
             labels = pr_info.labels if pr_info else []
 
             if "exclude from changelog" in labels:
@@ -198,6 +201,9 @@ def main() -> None:
             added = False
 
             # Some PRs can show up underm multiple sections:
+            if "C/C++ SDK" in labels:
+                cpp.append(summary)
+                added = True
             if "🐍 python API" in labels:
                 python.append(summary)
                 added = True
@@ -243,6 +249,7 @@ def main() -> None:
     # Most interesting first:
     print_section("🐍 Python SDK", python)
     print_section("🦀 Rust SDK", rust)
+    print_section("🌊 C++ SDK (experimental!)", cpp)
     print_section("🪳 Bug Fixes", bugs)
     print_section("🌁 Viewer Improvements", viewer)
     print_section("🚀 Performance Improvements", performance)

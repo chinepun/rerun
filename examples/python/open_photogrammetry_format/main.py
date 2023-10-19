@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Load an Open Photogrammetry Format (OFP) project and display the cameras and point cloud.
+Load an Open Photogrammetry Format (OPF) project and display the cameras and point cloud.
 
 OPF specification: https://pix4d.github.io/opf-spec/index.html
 Dataset source: https://support.pix4d.com/hc/en-us/articles/360000235126-Example-projects-real-photogrammetry-data#OPF1
@@ -77,8 +77,13 @@ class OPFProject:
         log_as_frames : bool, optional
             Whether to log the cameras as individual frames, by default True
         """
+        import os
+
         self.path = path
-        self.project = resolve(load(str(path)))
+        # TODO(Pix4D/pyopf#6): https://github.com/Pix4D/pyopf/issues/6
+        # pyopf doesn't seem to work with regular windows paths, but a "UNC dos path" works
+        path_as_str = "\\\\.\\" + str(path.absolute()) if os.name == "nt" else str(path)
+        self.project = resolve(load(path_as_str))
         self.log_as_frames = log_as_frames
 
     @classmethod
@@ -105,7 +110,7 @@ class OPFProject:
     def log_point_cloud(self) -> None:
         """Log the project's point cloud."""
         pcl = self.project.point_cloud_objs[0]
-        rr.log_points("world/pcl", positions=pcl.nodes[0].position, colors=pcl.nodes[0].color, timeless=True)
+        rr.log("world/pcl", rr.Points3D(pcl.nodes[0].position, colors=pcl.nodes[0].color), timeless=True)
 
     def log_calibrated_cameras(self) -> None:
         """
@@ -161,24 +166,25 @@ class OPFProject:
                 )
             )
 
-            rr.log_transform3d(entity, rr.TranslationAndMat3(translation=calib_camera.position, matrix=rot))
+            rr.log(entity, rr.Transform3D(translation=calib_camera.position, mat3x3=rot))
 
             assert calib_sensor.internals.type == "perspective"
 
             # RUB coordinate system specified in https://pix4d.github.io/opf-spec/specification/projected_input_cameras.html#coordinate-system-specification
-            rr.log_pinhole(
+            rr.log(
                 entity + "/image",
-                focal_length_px=calib_sensor.internals.focal_length_px,
-                principal_point_px=calib_sensor.internals.principal_point_px,
-                width=sensor.image_size_px[0],
-                height=sensor.image_size_px[1],
-                camera_xyz="RUB",
+                rr.Pinhole(
+                    resolution=sensor.image_size_px,
+                    focal_length=calib_sensor.internals.focal_length_px,
+                    principal_point=calib_sensor.internals.principal_point_px,
+                    camera_xyz=rr.ViewCoordinates.RUB,
+                ),
             )
-            rr.log_image_file(entity + "/image/rgb", img_path=self.path.parent / camera.uri)
+            rr.log(entity + "/image/rgb", rr.ImageEncoded(path=self.path.parent / camera.uri))
 
 
 def main() -> None:
-    logging.getLogger().addHandler(logging.StreamHandler())
+    logging.getLogger().addHandler(rr.LoggingHandler())
     logging.getLogger().setLevel("INFO")
 
     parser = argparse.ArgumentParser(description="Uses the MediaPipe Face Detection to track a human pose in video.")
@@ -205,6 +211,7 @@ def main() -> None:
 
     # display everything in Rerun
     rr.script_setup(args, "rerun_example_open_photogrammetry_format")
+    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP, timeless=True)
     project.log_point_cloud()
     project.log_calibrated_cameras()
     rr.script_teardown(args)

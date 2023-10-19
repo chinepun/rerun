@@ -47,19 +47,15 @@ pub use self::data_row::{
 pub use self::data_table::{
     DataCellColumn, DataCellOptVec, DataTable, DataTableError, DataTableResult, EntityPathVec,
     ErasedTimeVec, NumInstancesVec, RowIdVec, TableId, TimePointVec, COLUMN_ENTITY_PATH,
-    COLUMN_INSERT_ID, COLUMN_NUM_INSTANCES, COLUMN_ROW_ID, COLUMN_TIMEPOINT, METADATA_KIND,
-    METADATA_KIND_CONTROL, METADATA_KIND_DATA,
+    COLUMN_INSERT_ID, COLUMN_NUM_INSTANCES, COLUMN_TIMEPOINT, METADATA_KIND, METADATA_KIND_CONTROL,
+    METADATA_KIND_DATA,
 };
 pub use self::index::*;
 pub use self::path::*;
-pub use self::time::{Duration, Time};
+pub use self::time::{Duration, Time, TimeZone};
 pub use self::time_point::{TimeInt, TimePoint, TimeType, Timeline, TimelineName};
 pub use self::time_range::{TimeRange, TimeRangeF};
 pub use self::time_real::TimeReal;
-
-// Re-export `ComponentName` for convenience
-pub use re_types::ComponentName;
-pub use re_types::SizeBytes;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use self::data_table_batcher::{
@@ -76,7 +72,9 @@ pub use self::load_file::{data_cells_from_file_contents, FromFileError};
 pub mod external {
     pub use arrow2;
     pub use arrow2_convert;
+
     pub use re_tuid;
+    pub use re_types_core;
 }
 
 #[macro_export]
@@ -228,9 +226,6 @@ pub enum LogMsg {
     /// Should usually be the first message sent.
     SetStoreInfo(SetStoreInfo),
 
-    /// Server-backed operation on an [`EntityPath`].
-    EntityPathOpMsg(StoreId, EntityPathOpMsg),
-
     /// Log an entity using an [`ArrowMsg`].
     ArrowMsg(StoreId, ArrowMsg),
 }
@@ -239,7 +234,7 @@ impl LogMsg {
     pub fn store_id(&self) -> &StoreId {
         match self {
             Self::SetStoreInfo(msg) => &msg.info.store_id,
-            Self::EntityPathOpMsg(store_id, _) | Self::ArrowMsg(store_id, _) => store_id,
+            Self::ArrowMsg(store_id, _) => store_id,
         }
     }
 }
@@ -337,10 +332,10 @@ pub enum StoreSource {
 
     /// The official Rerun Rust Logging SDK
     RustSdk {
-        /// Rust version of the the code compiling the Rust SDK
+        /// Rust version of the code compiling the Rust SDK
         rustc_version: String,
 
-        /// LLVM version of the the code compiling the Rust SDK
+        /// LLVM version of the code compiling the Rust SDK
         llvm_version: String,
     },
 
@@ -348,6 +343,9 @@ pub enum StoreSource {
     File {
         file_source: FileSource,
     },
+
+    /// Generated from the viewer itself.
+    Viewer,
 
     /// Perhaps from some manual data ingestion?
     Other(String),
@@ -365,30 +363,13 @@ impl std::fmt::Display for StoreSource {
                 FileSource::DragAndDrop => write!(f, "File via drag-and-drop"),
                 FileSource::FileDialog => write!(f, "File via file dialog"),
             },
+            Self::Viewer => write!(f, "Viewer-generated"),
             Self::Other(string) => format!("{string:?}").fmt(f), // put it in quotes
         }
     }
 }
 
 // ----------------------------------------------------------------------------
-
-/// An operation (like a 'clear') on an [`EntityPath`].
-#[must_use]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct EntityPathOpMsg {
-    /// A unique id per [`EntityPathOpMsg`].
-    pub row_id: RowId,
-
-    /// Time information (when it was logged, when it was received, …).
-    ///
-    /// If this is empty, no operation will be performed as we
-    /// cannot be timeless in a meaningful way.
-    pub time_point: TimePoint,
-
-    /// What operation.
-    pub path_op: PathOp,
-}
 
 /// Operation to perform on an [`EntityPath`], e.g. clearing all components.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -419,14 +400,14 @@ impl PathOp {
 
 // ---------------------------------------------------------------------------
 
-/// Implements [`re_types::Component`] for `T: arrow2_convert::{Serialize, Deserialize}`.
+/// Implements [`::re_types::Component`] for `T: arrow2_convert::{Serialize, Deserialize}`.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! arrow2convert_component_shim {
     ($entity:ident as $fqname:expr) => {
 
-        impl re_types::Loggable for $entity {
-            type Name = re_types::ComponentName;
+        impl ::re_types::Loggable for $entity {
+            type Name = ::re_types::ComponentName;
 
             #[inline]
             fn name() -> Self::Name {
@@ -441,7 +422,7 @@ macro_rules! arrow2convert_component_shim {
             #[inline]
             fn to_arrow_opt<'a>(
                 data: impl IntoIterator<Item = Option<impl Into<std::borrow::Cow<'a, Self>>>>,
-            ) -> re_types::SerializationResult<Box<dyn arrow2::array::Array>>
+            ) -> ::re_types::SerializationResult<Box<dyn arrow2::array::Array>>
             where
                 Self: Clone + 'a,
             {
@@ -454,14 +435,14 @@ macro_rules! arrow2convert_component_shim {
 
                 let arrow = arrow2_convert::serialize::TryIntoArrow::try_into_arrow(vec.iter())
                     .map_err(|err| {
-                        re_types::SerializationError::ArrowConvertFailure(err.to_string())
+                        ::re_types::SerializationError::ArrowConvertFailure(err.to_string())
                     })?;
 
                 Ok(arrow)
             }
 
             #[inline]
-            fn from_arrow_opt(data: &dyn ::arrow2::array::Array) -> re_types::DeserializationResult<Vec<Option<Self>>>
+            fn from_arrow_opt(data: &dyn ::arrow2::array::Array) -> ::re_types::DeserializationResult<Vec<Option<Self>>>
             where
                 Self: Sized
             {

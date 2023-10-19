@@ -14,7 +14,9 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_cast)]
 
-/// The `AnnotationContext` provides additional information on how to display entities.
+use ::re_types_core::external::arrow2;
+
+/// **Component**: The `AnnotationContext` provides additional information on how to display entities.
 ///
 /// Entities can use `ClassId`s and `KeypointId`s to provide annotations, and
 /// the labels and colors will be looked up in the appropriate
@@ -22,7 +24,10 @@
 /// path-hierarchy when searching up through the ancestors of a given entity
 /// path.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AnnotationContext(pub Vec<crate::datatypes::ClassDescriptionMapElem>);
+pub struct AnnotationContext(
+    /// List of class descriptions, mapping class indices to class names, colors etc.
+    pub Vec<crate::datatypes::ClassDescriptionMapElem>,
+);
 
 impl<I: Into<crate::datatypes::ClassDescriptionMapElem>, T: IntoIterator<Item = I>> From<T>
     for AnnotationContext
@@ -46,8 +51,8 @@ impl<'a> From<&'a AnnotationContext> for ::std::borrow::Cow<'a, AnnotationContex
     }
 }
 
-impl crate::Loggable for AnnotationContext {
-    type Name = crate::ComponentName;
+impl ::re_types_core::Loggable for AnnotationContext {
+    type Name = ::re_types_core::ComponentName;
 
     #[inline]
     fn name() -> Self::Name {
@@ -57,7 +62,7 @@ impl crate::Loggable for AnnotationContext {
     #[allow(unused_imports, clippy::wildcard_imports)]
     #[inline]
     fn arrow_datatype() -> arrow2::datatypes::DataType {
-        use ::arrow2::datatypes::*;
+        use arrow2::datatypes::*;
         DataType::List(Box::new(Field {
             name: "item".to_owned(),
             data_type: <crate::datatypes::ClassDescriptionMapElem>::arrow_datatype(),
@@ -69,13 +74,13 @@ impl crate::Loggable for AnnotationContext {
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn to_arrow_opt<'a>(
         data: impl IntoIterator<Item = Option<impl Into<::std::borrow::Cow<'a, Self>>>>,
-    ) -> crate::SerializationResult<Box<dyn ::arrow2::array::Array>>
+    ) -> ::re_types_core::SerializationResult<Box<dyn arrow2::array::Array>>
     where
         Self: Clone + 'a,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, datatypes::*};
         Ok({
             let (somes, data0): (Vec<_>, Vec<_>) = data
                 .into_iter()
@@ -88,7 +93,7 @@ impl crate::Loggable for AnnotationContext {
                     (datum.is_some(), datum)
                 })
                 .unzip();
-            let data0_bitmap: Option<::arrow2::bitmap::Bitmap> = {
+            let data0_bitmap: Option<arrow2::bitmap::Bitmap> = {
                 let any_nones = somes.iter().any(|some| !*some);
                 any_nones.then(|| somes.into())
             };
@@ -101,8 +106,8 @@ impl crate::Loggable for AnnotationContext {
                     .cloned()
                     .map(Some)
                     .collect();
-                let data0_inner_bitmap: Option<::arrow2::bitmap::Bitmap> = None;
-                let offsets = ::arrow2::offset::Offsets::<i32>::try_from_lengths(
+                let data0_inner_bitmap: Option<arrow2::bitmap::Bitmap> = None;
+                let offsets = arrow2::offset::Offsets::<i32>::try_from_lengths(
                     data0
                         .iter()
                         .map(|opt| opt.as_ref().map(|datum| datum.len()).unwrap_or_default()),
@@ -125,20 +130,20 @@ impl crate::Loggable for AnnotationContext {
 
     #[allow(unused_imports, clippy::wildcard_imports)]
     fn from_arrow_opt(
-        arrow_data: &dyn ::arrow2::array::Array,
-    ) -> crate::DeserializationResult<Vec<Option<Self>>>
+        arrow_data: &dyn arrow2::array::Array,
+    ) -> ::re_types_core::DeserializationResult<Vec<Option<Self>>>
     where
         Self: Sized,
     {
         re_tracing::profile_function!();
-        use crate::{Loggable as _, ResultExt as _};
-        use ::arrow2::{array::*, buffer::*, datatypes::*};
+        use ::re_types_core::{Loggable as _, ResultExt as _};
+        use arrow2::{array::*, buffer::*, datatypes::*};
         Ok({
             let arrow_data = arrow_data
                 .as_any()
-                .downcast_ref::<::arrow2::array::ListArray<i32>>()
+                .downcast_ref::<arrow2::array::ListArray<i32>>()
                 .ok_or_else(|| {
-                    crate::DeserializationError::datatype_mismatch(
+                    ::re_types_core::DeserializationError::datatype_mismatch(
                         DataType::List(Box::new(Field {
                             name: "item".to_owned(),
                             data_type: <crate::datatypes::ClassDescriptionMapElem>::arrow_datatype(
@@ -170,7 +175,7 @@ impl crate::Loggable for AnnotationContext {
                         let start = *start as usize;
                         let end = start + len;
                         if end as usize > arrow_data_inner.len() {
-                            return Err(crate::DeserializationError::offset_slice_oob(
+                            return Err(::re_types_core::DeserializationError::offset_slice_oob(
                                 (start, end),
                                 arrow_data_inner.len(),
                             ));
@@ -188,13 +193,13 @@ impl crate::Loggable for AnnotationContext {
                     })
                     .transpose()
                 })
-                .collect::<crate::DeserializationResult<Vec<Option<_>>>>()?
+                .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()?
             }
             .into_iter()
         }
-        .map(|v| v.ok_or_else(crate::DeserializationError::missing_data))
+        .map(|v| v.ok_or_else(::re_types_core::DeserializationError::missing_data))
         .map(|res| res.map(|v| Some(Self(v))))
-        .collect::<crate::DeserializationResult<Vec<Option<_>>>>()
+        .collect::<::re_types_core::DeserializationResult<Vec<Option<_>>>>()
         .with_context("rerun.components.AnnotationContext#class_map")
         .with_context("rerun.components.AnnotationContext")?)
     }

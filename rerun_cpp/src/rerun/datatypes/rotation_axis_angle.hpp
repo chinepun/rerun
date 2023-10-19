@@ -18,13 +18,13 @@ namespace arrow {
 
 namespace rerun {
     namespace datatypes {
-        /// 3D rotation represented by a rotation around a given axis.
+        /// **Datatype**: 3D rotation represented by a rotation around a given axis.
         struct RotationAxisAngle {
             /// Axis to rotate around.
             ///
             /// This is not required to be normalized.
-            /// If normalization fails (typically because the vector is length zero), the rotation
-            /// is silently ignored.
+            /// If normalization fails (typically because the vector is length zero), the rotation is silently
+            /// ignored.
             rerun::datatypes::Vec3D axis;
 
             /// How much to rotate around the axis.

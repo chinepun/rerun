@@ -6,7 +6,7 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use itertools::Itertools as _;
 
-use crate::Docs;
+use crate::{Docs, GeneratedFiles, Reporter};
 
 fn is_blank<T: AsRef<str>>(line: T) -> bool {
     line.as_ref().chars().all(char::is_whitespace)
@@ -53,6 +53,9 @@ pub struct ExampleInfo<'a> {
 
     /// A screenshot of the example.
     pub image: Option<ImageUrl<'a>>,
+
+    /// If true, use this example only for the manual, not for documentation embedded in the emitted code.
+    pub exclude_from_api_docs: bool,
 }
 
 impl<'a> ExampleInfo<'a> {
@@ -86,10 +89,18 @@ impl<'a> ExampleInfo<'a> {
                 .split_once(' ')
                 .map_or((tag_content, None), |(a, b)| (a, Some(b)));
 
-            let (mut title, mut image) = (None, None);
+            let (mut title, mut image, mut exclude_from_api_docs) = (None, None, false);
 
             if let Some(args) = args {
                 let args = args.trim();
+
+                exclude_from_api_docs = args.contains("!api");
+                let args = if let Some(args_without_api_prefix) = args.strip_prefix("!api") {
+                    args_without_api_prefix.trim()
+                } else {
+                    args
+                };
+
                 if args.starts_with('"') {
                     // \example example_name "Example Title"
                     title = args.strip_prefix('"').and_then(|v| v.strip_suffix('"'));
@@ -100,7 +111,12 @@ impl<'a> ExampleInfo<'a> {
                 }
             }
 
-            ExampleInfo { name, title, image }
+            ExampleInfo {
+                name,
+                title,
+                image,
+                exclude_from_api_docs,
+            }
         }
 
         mono(tag_content.as_ref())
@@ -173,6 +189,9 @@ impl RerunImageUrl<'_> {
     pub fn image_stack(&self) -> Vec<String> {
         const WIDTHS: [u16; 4] = [480, 768, 1024, 1200];
 
+        // Don't let the images take up too much space on the page.
+        let desired_with = Some(640);
+
         let RerunImageUrl {
             name,
             hash,
@@ -180,7 +199,7 @@ impl RerunImageUrl<'_> {
             extension,
         } = *self;
 
-        let mut stack = vec!["<picture>".into()];
+        let mut stack = vec!["<center>".into(), "<picture>".into()];
         if let Some(max_width) = max_width {
             for width in WIDTHS {
                 if width > max_width {
@@ -191,10 +210,18 @@ impl RerunImageUrl<'_> {
                 ));
             }
         }
-        stack.push(format!(
-            r#"  <img src="https://static.rerun.io/{name}/{hash}/full.{extension}">"#
-        ));
+
+        if let Some(desired_with) = desired_with {
+            stack.push(format!(
+                r#"  <img src="https://static.rerun.io/{name}/{hash}/full.{extension}" width="{desired_with}">"#
+            ));
+        } else {
+            stack.push(format!(
+                r#"  <img src="https://static.rerun.io/{name}/{hash}/full.{extension}">"#
+            ));
+        }
         stack.push("</picture>".into());
+        stack.push("</center>".into());
 
         stack
     }
@@ -205,7 +232,7 @@ pub struct Example<'a> {
     pub lines: Vec<String>,
 }
 
-pub fn collect_examples<'a>(
+pub fn collect_examples_for_api_docs<'a>(
     docs: &'a Docs,
     extension: &str,
     required: bool,
@@ -215,7 +242,16 @@ pub fn collect_examples<'a>(
     if let Some(examples) = docs.tagged_docs.get("example") {
         let base_path = crate::rerun_workspace_path().join("docs/code-examples");
 
-        for base @ ExampleInfo { name, .. } in examples.iter().map(ExampleInfo::parse) {
+        for base @ ExampleInfo {
+            name,
+            exclude_from_api_docs,
+            ..
+        } in examples.iter().map(ExampleInfo::parse)
+        {
+            if exclude_from_api_docs {
+                continue;
+            }
+
             let path = base_path.join(format!("{name}.{extension}"));
             let content = match std::fs::read_to_string(&path) {
                 Ok(content) => content,
@@ -224,7 +260,13 @@ pub fn collect_examples<'a>(
                     return Err(err).with_context(|| format!("couldn't open code example {path:?}"))
                 }
             };
-            let mut content = content.split('\n').map(String::from).collect_vec();
+            let mut content = content
+                .split('\n')
+                .map(String::from)
+                .skip_while(|line| line.starts_with("//") || line.starts_with(r#"""""#)) // Skip leading comments.
+                .skip_while(|line| line.trim().is_empty()) // Strip leading empty lines.
+                .collect_vec();
+
             // trim trailing blank lines
             while content.last().is_some_and(is_blank) {
                 content.pop();
@@ -259,47 +301,71 @@ impl StringExt for String {
     }
 }
 
-/// Remove all files in the given folder that are not in the given set.
-pub fn remove_old_files_from_folder(folder_path: Utf8PathBuf, filepaths: &BTreeSet<Utf8PathBuf>) {
+/// Remove orphaned files in all directories present in `files`.
+pub fn remove_orphaned_files(reporter: &Reporter, files: &GeneratedFiles) {
     re_tracing::profile_function!();
-    re_log::debug!("Checking for old files in {folder_path}");
-    for entry in std::fs::read_dir(folder_path).unwrap().flatten() {
-        if entry.file_type().unwrap().is_dir() {
-            continue;
-        }
-        let filepath = Utf8PathBuf::try_from(entry.path()).unwrap();
 
-        if let Some(stem) = filepath.as_str().strip_suffix("_ext.rs") {
-            let generated_path = Utf8PathBuf::try_from(format!("{stem}.rs")).unwrap();
-            assert!(
-                generated_path.exists(),
-                "Found orphaned {filepath} with no matching {generated_path}"
-            );
-            continue;
-        }
+    let folder_paths: BTreeSet<_> = files
+        .keys()
+        .filter_map(|filepath| filepath.parent())
+        .collect();
 
-        if let Some(stem) = filepath.as_str().strip_suffix("_ext.py") {
-            let generated_path = Utf8PathBuf::try_from(format!("{stem}.py")).unwrap();
-            assert!(
-                generated_path.exists(),
-                "Found orphaned {filepath} with no matching {generated_path}"
-            );
+    for folder_path in folder_paths {
+        re_log::debug!("Checking for orphaned files in {folder_path}");
+
+        let iter = std::fs::read_dir(folder_path).ok();
+        if iter.is_none() {
+            re_log::debug!("Skipping orphan check in {folder_path}: not a folder (?)");
             continue;
         }
 
-        if let Some(stem) = filepath.as_str().strip_suffix("_ext.cpp") {
-            let generated_hpp_path = Utf8PathBuf::try_from(format!("{stem}.hpp")).unwrap();
-            assert!(
-                generated_hpp_path.exists(),
-                "Found orphaned {filepath} with no matching {generated_hpp_path}"
-            );
-            continue;
-        }
+        for entry in iter.unwrap().flatten() {
+            if entry.file_type().unwrap().is_dir() {
+                continue;
+            }
+            let filepath = Utf8PathBuf::try_from(entry.path()).unwrap();
 
-        if !filepaths.contains(&filepath) {
-            re_log::info!("Removing {filepath:?}");
-            if let Err(err) = std::fs::remove_file(&filepath) {
-                panic!("Failed to remove {filepath:?}: {err}");
+            if let Some(stem) = filepath.as_str().strip_suffix("_ext.rs") {
+                let generated_path = Utf8PathBuf::try_from(format!("{stem}.rs")).unwrap();
+                if !generated_path.exists() {
+                    reporter.error(
+                        filepath.as_str(),
+                        "",
+                        format!("Found orphaned {filepath} with no matching {generated_path}"),
+                    );
+                }
+                continue;
+            }
+
+            if let Some(stem) = filepath.as_str().strip_suffix("_ext.py") {
+                let generated_path = Utf8PathBuf::try_from(format!("{stem}.py")).unwrap();
+                if !generated_path.exists() {
+                    reporter.error(
+                        filepath.as_str(),
+                        "",
+                        format!("Found orphaned {filepath} with no matching {generated_path}"),
+                    );
+                }
+                continue;
+            }
+
+            if let Some(stem) = filepath.as_str().strip_suffix("_ext.cpp") {
+                let generated_hpp_path = Utf8PathBuf::try_from(format!("{stem}.hpp")).unwrap();
+                if !generated_hpp_path.exists() {
+                    reporter.error(
+                        filepath.as_str(),
+                        "",
+                        format!("Found orphaned {filepath} with no matching {generated_hpp_path}"),
+                    );
+                }
+                continue;
+            }
+
+            if !files.contains_key(&filepath) {
+                re_log::info!("Removing {filepath:?}");
+                if let Err(err) = std::fs::remove_file(&filepath) {
+                    panic!("Failed to remove {filepath:?}: {err}");
+                }
             }
         }
     }
