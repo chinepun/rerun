@@ -8,11 +8,20 @@ use anyhow::{anyhow, ensure, Context as _};
 use clean_path::Clean as _;
 use parking_lot::RwLock;
 
+#[derive(thiserror::Error, Debug)]
+pub enum FileSystemError {
+    #[error("Failed to read file at {path} ")]
+    OsFileSystemError { path: PathBuf },
+
+    #[error("file does not exist at {path:?}")]
+    MemFileSystemError { path: PathBuf },
+}
+
 // ---
 
 /// A very limited filesystem, just enough for our internal needs.
 pub trait FileSystem {
-    fn read_to_string(&self, path: impl AsRef<Path>) -> anyhow::Result<Cow<'static, str>>;
+    fn read_to_string(&self, path: impl AsRef<Path>) -> Result<Cow<'static, str>, FileSystemError>;
 
     fn canonicalize(&self, path: impl AsRef<Path>) -> anyhow::Result<PathBuf>;
 
@@ -52,10 +61,12 @@ pub fn get_filesystem() -> &'static MemFileSystem {
 pub struct OsFileSystem;
 
 impl FileSystem for OsFileSystem {
-    fn read_to_string(&self, path: impl AsRef<Path>) -> anyhow::Result<Cow<'static, str>> {
+    fn read_to_string(&self, path: impl AsRef<Path>) -> Result<Cow<'static, str>, FileSystemError> {
         let path = path.as_ref();
         std::fs::read_to_string(path)
-            .with_context(|| format!("failed to read file at {path:?}"))
+            .map_err(|_| FileSystemError::OsFileSystemError {
+                path: path.to_owned(),
+            })
             .map(Into::into)
     }
 
@@ -113,7 +124,7 @@ impl MemFileSystem {
 }
 
 impl FileSystem for &'static MemFileSystem {
-    fn read_to_string(&self, path: impl AsRef<Path>) -> anyhow::Result<Cow<'static, str>> {
+    fn read_to_string(&self, path: impl AsRef<Path>) -> Result<Cow<'static, str>, FileSystemError> {
         let path = path.as_ref().clean();
         let files = self.files.read();
         let files = files.as_ref().unwrap();
@@ -122,7 +133,9 @@ impl FileSystem for &'static MemFileSystem {
             // NOTE: This is calling `Cow::clone`, which doesn't actually clone anything
             // if `self` is `Cow::Borrowed`!
             .cloned()
-            .ok_or_else(|| anyhow!("file does not exist at {path:?}"))
+            .ok_or_else(|| FileSystemError::MemFileSystemError {
+                path: path.to_owned(),
+            })
     }
 
     fn canonicalize(&self, path: impl AsRef<Path>) -> anyhow::Result<PathBuf> {

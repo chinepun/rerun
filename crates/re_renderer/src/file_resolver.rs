@@ -187,7 +187,7 @@ use ahash::{HashMap, HashSet, HashSetExt};
 use anyhow::{anyhow, ensure};
 use clean_path::Clean as _;
 
-use crate::FileSystem;
+use crate::{file_system::FileSystemError, FileSystem};
 
 // ---
 
@@ -291,18 +291,16 @@ pub enum FileResolverError {
 
     #[error("misformatted import clause: {clause_str:?}")]
     MisformattedImportClause { clause_str: String },
-}
 
-#[derive(thiserror::Error, Debug)]
-pub enum FileInterpolationError {
     #[error("import cycle detected: {path_stack:?}")]
     ImportCycleDetected { path_stack: Vec<PathBuf> },
 
     #[error("couldn't resolve import clause path at {path:?}")]
     CannotResolveImportPath { path: PathBuf },
-}
 
-pub type FileInterpolationResult<T> = ::std::result::Result<T, FileInterpolationError>;
+    #[error(transparent)]
+    ReadError(#[from] FileSystemError),
+}
 
 impl ImportClause {
     pub const PREFIX: &str = "#import ";
@@ -538,7 +536,10 @@ impl<Fs: FileSystem> FileResolver<Fs> {
 }
 
 impl<Fs: FileSystem> FileResolver<Fs> {
-    pub fn populate(&mut self, path: impl AsRef<Path>) -> anyhow::Result<InterpolatedFile> {
+    pub fn populate(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<InterpolatedFile, FileResolverError> {
         re_tracing::profile_function!();
 
         fn populate_rec<Fs: FileSystem>(
@@ -547,20 +548,16 @@ impl<Fs: FileSystem> FileResolver<Fs> {
             interp_files: &mut HashMap<PathBuf, Rc<InterpolatedFile>>,
             path_stack: &mut Vec<PathBuf>,
             visited_stack: &mut HashSet<PathBuf>,
-        ) -> anyhow::Result<Rc<InterpolatedFile>> {
+        ) -> Result<Rc<InterpolatedFile>, FileResolverError> {
             let path = path.as_ref().clean();
 
             // Cycle detection
             path_stack.push(path.clone());
-            ensure!(
-                visited_stack.insert(path.clone()),
-                "import cycle detected: {path_stack:?}"
-            );
-            // if !visited_stack.insert(path.clone()) {
-            //     return Err(FileInterpolationError::ImportCycleDetected {
-            //         path_stack: path_stack.to_vec(),
-            //     });
-            // };
+            if !visited_stack.insert(path.clone()) {
+                return Err(FileResolverError::ImportCycleDetected {
+                    path_stack: path_stack.clone(),
+                });
+            };
 
             // #pragma once
             if interp_files.contains_key(&path) {
@@ -582,13 +579,9 @@ impl<Fs: FileSystem> FileResolver<Fs> {
                         let clause = line.parse::<ImportClause>()?;
                         // We do not use `Path::parent` on purpose!
                         let cwd = path.join("..").clean();
-                        let clause_path =
-                            this.resolve_clause_path(cwd, &clause.path).ok_or_else(|| {
-                                anyhow!("couldn't resolve import clause path at {:?}", clause.path)
-                                // FileInterpolationError::CannotResolveImportPath {
-                                //     path: clause.path,
-                                // }
-                            })?;
+                        let clause_path = this.resolve_clause_path(cwd, &clause.path).ok_or({
+                            FileResolverError::CannotResolveImportPath { path: clause.path }
+                        })?;
                         imports.insert(clause_path.clone());
                         populate_rec(this, clause_path, interp_files, path_stack, visited_stack)
                     } else {
