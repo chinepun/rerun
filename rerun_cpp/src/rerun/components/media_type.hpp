@@ -33,6 +33,7 @@ namespace rerun {
           public:
             // Extensions to generated type defined in 'media_type_ext.cpp'
 
+            /// Construct media type from a null-terminated UTF8 string.
             MediaType(const char* media_type) : value(media_type) {}
 
             // TODO(#2388): come up with some DSL in our flatbuffers definitions so that we can
@@ -74,14 +75,24 @@ namespace rerun {
           public:
             MediaType() = default;
 
-            MediaType(rerun::datatypes::Utf8 _value) : value(std::move(_value)) {}
+            MediaType(rerun::datatypes::Utf8 value_) : value(std::move(value_)) {}
 
-            MediaType& operator=(rerun::datatypes::Utf8 _value) {
-                value = std::move(_value);
+            MediaType& operator=(rerun::datatypes::Utf8 value_) {
+                value = std::move(value_);
                 return *this;
             }
 
-            MediaType(std::string arg) : value(std::move(arg)) {}
+            MediaType(std::string value_) : value(std::move(value_)) {}
+
+            MediaType& operator=(std::string value_) {
+                value = std::move(value_);
+                return *this;
+            }
+
+            /// Cast to the underlying Utf8 datatype
+            operator rerun::datatypes::Utf8() const {
+                return value;
+            }
 
             /// Returns the arrow data type this type corresponds to.
             static const std::shared_ptr<arrow::DataType>& arrow_datatype();

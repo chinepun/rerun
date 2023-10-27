@@ -7,6 +7,7 @@
 #include "../datatypes/vec3d.hpp"
 #include "../result.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -39,13 +40,23 @@ namespace rerun {
             static const char NAME[];
 
           public:
+            // Extensions to generated type defined in 'line_strip3d_ext.cpp'
+
+            template <typename T>
+            LineStrip3D(const std::vector<T>& points_) : points(points_.size()) {
+                std::transform(points_.begin(), points_.end(), points.begin(), [](const T& pt) {
+                    return rerun::datatypes::Vec3D(pt);
+                });
+            }
+
+          public:
             LineStrip3D() = default;
 
-            LineStrip3D(std::vector<rerun::datatypes::Vec3D> _points)
-                : points(std::move(_points)) {}
+            LineStrip3D(std::vector<rerun::datatypes::Vec3D> points_)
+                : points(std::move(points_)) {}
 
-            LineStrip3D& operator=(std::vector<rerun::datatypes::Vec3D> _points) {
-                points = std::move(_points);
+            LineStrip3D& operator=(std::vector<rerun::datatypes::Vec3D> points_) {
+                points = std::move(points_);
                 return *this;
             }
 

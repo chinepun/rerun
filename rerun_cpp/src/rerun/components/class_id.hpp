@@ -9,7 +9,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 namespace arrow {
     template <typename T>
@@ -33,14 +32,24 @@ namespace rerun {
           public:
             ClassId() = default;
 
-            ClassId(rerun::datatypes::ClassId _id) : id(std::move(_id)) {}
+            ClassId(rerun::datatypes::ClassId id_) : id(id_) {}
 
-            ClassId& operator=(rerun::datatypes::ClassId _id) {
-                id = std::move(_id);
+            ClassId& operator=(rerun::datatypes::ClassId id_) {
+                id = id_;
                 return *this;
             }
 
-            ClassId(uint16_t arg) : id(std::move(arg)) {}
+            ClassId(uint16_t id_) : id(id_) {}
+
+            ClassId& operator=(uint16_t id_) {
+                id = id_;
+                return *this;
+            }
+
+            /// Cast to the underlying ClassId datatype
+            operator rerun::datatypes::ClassId() const {
+                return id;
+            }
 
             /// Returns the arrow data type this type corresponds to.
             static const std::shared_ptr<arrow::DataType>& arrow_datatype();

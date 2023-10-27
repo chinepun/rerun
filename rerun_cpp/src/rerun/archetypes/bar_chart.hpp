@@ -9,6 +9,7 @@
 #include "../half.hpp"
 #include "../indicator_component.hpp"
 #include "../result.hpp"
+#include "../util.hpp"
 
 #include <cstdint>
 #include <utility>
@@ -28,7 +29,7 @@ namespace rerun {
         ///
         /// int main() {
         ///     auto rec = rerun::RecordingStream("rerun_example_bar_chart");
-        ///     rec.connect().throw_on_failure();
+        ///     rec.spawn().throw_on_failure();
         ///
         ///     rec.log("bar_chart", rerun::BarChart::i64({8, 4, 0, 9, 1, 4, 1, 6, 9, 0}));
         /// }
@@ -46,7 +47,8 @@ namespace rerun {
             // Extensions to generated type defined in 'bar_chart_ext.cpp'
 
             BarChart(rerun::datatypes::TensorBuffer buffer) {
-                this->values = rerun::components::TensorData::one_dim(std::move(buffer));
+                auto num_elems = buffer.num_elems();
+                this->values = rerun::components::TensorData({num_elems}, std::move(buffer));
             }
 
             // --------------------------------------------------------------------

@@ -1,4 +1,4 @@
-// Log a batch of 3D arrows.
+// Log a a simple 3D asset.
 
 #include <rerun.hpp>
 
@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
     std::string path = args[1];
 
     auto rec = rerun::RecordingStream("rerun_example_asset3d_simple");
-    rec.connect().throw_on_failure();
+    rec.spawn().throw_on_failure();
 
     rec.log_timeless("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP); // Set an up-axis
     rec.log("world/asset", rerun::Asset3D::from_file(path).value_or_throw());

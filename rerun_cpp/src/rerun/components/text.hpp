@@ -20,7 +20,7 @@ namespace arrow {
 
 namespace rerun {
     namespace components {
-        /// **Component**: A string of text, e.g. for labels and text documents
+        /// **Component**: A string of text, e.g. for labels and text documents.
         struct Text {
             rerun::datatypes::Utf8 value;
 
@@ -30,7 +30,7 @@ namespace rerun {
           public:
             // Extensions to generated type defined in 'text_ext.cpp'
 
-            /// Construct `Text` from a zero-terminated UTF8 string.
+            /// Construct `Text` from a null-terminated UTF8 string.
             Text(const char* str) : value(str) {}
 
             const char* c_str() const {
@@ -40,14 +40,24 @@ namespace rerun {
           public:
             Text() = default;
 
-            Text(rerun::datatypes::Utf8 _value) : value(std::move(_value)) {}
+            Text(rerun::datatypes::Utf8 value_) : value(std::move(value_)) {}
 
-            Text& operator=(rerun::datatypes::Utf8 _value) {
-                value = std::move(_value);
+            Text& operator=(rerun::datatypes::Utf8 value_) {
+                value = std::move(value_);
                 return *this;
             }
 
-            Text(std::string arg) : value(std::move(arg)) {}
+            Text(std::string value_) : value(std::move(value_)) {}
+
+            Text& operator=(std::string value_) {
+                value = std::move(value_);
+                return *this;
+            }
+
+            /// Cast to the underlying Utf8 datatype
+            operator rerun::datatypes::Utf8() const {
+                return value;
+            }
 
             /// Returns the arrow data type this type corresponds to.
             static const std::shared_ptr<arrow::DataType>& arrow_datatype();
