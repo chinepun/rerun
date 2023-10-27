@@ -56,7 +56,7 @@ namespace rerun {
             /// Designates very low priority, often extremely verbose, information.
             static const TextLogLevel TRACE;
 
-            /// Construct `TextLogLevel` from a zero-terminated UTF8 string.
+            /// Construct `TextLogLevel` from a null-terminated UTF8 string.
             TextLogLevel(const char* str) : value(str) {}
 
             const char* c_str() const {
@@ -66,14 +66,24 @@ namespace rerun {
           public:
             TextLogLevel() = default;
 
-            TextLogLevel(rerun::datatypes::Utf8 _value) : value(std::move(_value)) {}
+            TextLogLevel(rerun::datatypes::Utf8 value_) : value(std::move(value_)) {}
 
-            TextLogLevel& operator=(rerun::datatypes::Utf8 _value) {
-                value = std::move(_value);
+            TextLogLevel& operator=(rerun::datatypes::Utf8 value_) {
+                value = std::move(value_);
                 return *this;
             }
 
-            TextLogLevel(std::string arg) : value(std::move(arg)) {}
+            TextLogLevel(std::string value_) : value(std::move(value_)) {}
+
+            TextLogLevel& operator=(std::string value_) {
+                value = std::move(value_);
+                return *this;
+            }
+
+            /// Cast to the underlying Utf8 datatype
+            operator rerun::datatypes::Utf8() const {
+                return value;
+            }
 
             /// Returns the arrow data type this type corresponds to.
             static const std::shared_ptr<arrow::DataType>& arrow_datatype();

@@ -4,7 +4,7 @@ project(rerun_cpp_proj LANGUAGES CXX)
 
 function(set_default_warning_settings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /WX)
+        target_compile_options(${target} PRIVATE /W4)
     else()
         # Enabled warnings.
         target_compile_options(${target} PRIVATE
@@ -33,13 +33,9 @@ function(set_default_warning_settings target)
             )
         endif()
 
-        # Disabled warnings
-        # arrow has a bunch of unused parameters in its headers.
-        target_compile_options(${target} PRIVATE -Wno-unused-parameter)
-
         # CMAKE_COMPILE_WARNING_AS_ERROR is only directly supported starting in CMake `3.24`
         # https://cmake.org/cmake/help/latest/prop_tgt/COMPILE_WARNING_AS_ERROR.html
-        if(${CMAKE_COMPILE_WARNING_AS_ERROR})
+        if(CMAKE_COMPILE_WARNING_AS_ERROR)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
 
@@ -52,9 +48,20 @@ function(set_default_warning_settings target)
     endif()
 endfunction()
 
+if(DEFINED ENV{WARNINGS_AS_ERRORS})
+    message(STATUS "Compiling with warnings as errors since WARNINGS_AS_ERRORS is set.")
+    set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
+endif()
+
 # Use makefiles on linux, otherwise it might use Ninja which isn't installed by default.
 if(NOT DEFINED CMAKE_GENERATOR AND UNIX)
     set(CMAKE_GENERATOR "Unix Makefiles")
+endif()
+
+# If using MSVC, always enable multi-process compiling for all targets.
+# Note that this setting is repeated for rerun_sdk's CMakeLists.txt since it should also work stand-alone.
+if(MSVC)
+    add_compile_options(/MP)
 endif()
 
 # Arrow requires a C++17 compliant compiler.
@@ -70,7 +77,7 @@ set(RERUN_REPOSITORY YES)
 file(READ "Cargo.toml" CARGO_TOML)
 string(REGEX MATCH "\nversion = \"([a-z0-9\.\+-]+)\"\n" _ ${CARGO_TOML})
 set(RERUN_VERSION ${CMAKE_MATCH_1})
-message(INFO "Rerun version ${RERUN_VERSION}")
+message(STATUS "Rerun version ${RERUN_VERSION}")
 
 # ------------------------------------------------------------------------------
 # Loguru logging library (https://github.com/emilk/loguru):
@@ -83,8 +90,12 @@ FetchContent_Declare(LoguruGitRepo
     GIT_TAG "master"
 )
 
-# set any loguru compile-time flags before calling MakeAvailable()
-set(LOGURU_STACKTRACES 1)
+# Set any loguru compile-time flags before calling MakeAvailable()
+# Stacktraces are not yet supported on Windows.
+if(NOT WIN32)
+    set(LOGURU_STACKTRACES 1)
+endif()
+
 FetchContent_MakeAvailable(LoguruGitRepo) # defines target 'loguru::loguru'
 
 # ------------------------------------------------------------------------------

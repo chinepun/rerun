@@ -8,6 +8,7 @@
 #include "../data_cell.hpp"
 #include "../indicator_component.hpp"
 #include "../result.hpp"
+#include "../util.hpp"
 
 #include <cstdint>
 #include <utility>
@@ -33,7 +34,7 @@ namespace rerun {
         ///
         /// int main() {
         ///     auto rec = rerun::RecordingStream("rerun_example_annotation_context_connections");
-        ///     rec.connect().throw_on_failure();
+        ///     rec.spawn().throw_on_failure();
         ///
         ///     // create an annotation context to describe the classes
         ///     rec.log_timeless(
@@ -45,14 +46,14 @@ namespace rerun {
         ///     );
         ///
         ///     // create a segmentation image
-        ///     const int HEIGHT = 8;
-        ///     const int WIDTH = 12;
+        ///     const int HEIGHT = 200;
+        ///     const int WIDTH = 300;
         ///     std::vector<uint8_t> data(WIDTH * HEIGHT, 0);
-        ///     for (auto y = 0; y <4; ++y) {                   // top half
-        ///         std::fill_n(data.begin() + y * WIDTH, 6, 1); // left half
+        ///     for (auto y = 50; y <100; ++y) {
+        ///         std::fill_n(data.begin() + y * WIDTH + 50, 70, static_cast<uint8_t>(1));
         ///     }
-        ///     for (auto y = 4; y <8; ++y) {                       // bottom half
-        ///         std::fill_n(data.begin() + y * WIDTH + 6, 6, 2); // right half
+        ///     for (auto y = 100; y <180; ++y) {
+        ///         std::fill_n(data.begin() + y * WIDTH + 130, 150, static_cast<uint8_t>(2));
         ///     }
         ///
         ///     rec.log("segmentation/image", rerun::SegmentationImage({HEIGHT, WIDTH}, std::move(data)));
