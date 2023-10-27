@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     auto path = argv[1];
 
     auto rec = rerun::RecordingStream("rerun_example_asset3d_out_of_tree");
-    rec.connect().throw_on_failure();
+    rec.spawn().throw_on_failure();
 
     rec.log_timeless("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP); // Set an up-axis
 
@@ -20,7 +20,11 @@ int main(int argc, char** argv) {
     // Those points will not be affected by their parent's out-of-tree transform!
     rec.log(
         "world/asset/points",
-        rerun::Points3D(rerun::demo::grid({-10.0f, -10.0f, -10.0f}, {10.0f, 10.0f, 10.0f}, 10))
+        rerun::Points3D(rerun::demo::grid<rerun::Position3D, float>(
+            {-10.0f, -10.0f, -10.0f},
+            {10.0f, 10.0f, 10.0f},
+            10
+        ))
     );
 
     for (int64_t i = 1; i < 20; ++i) {

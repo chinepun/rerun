@@ -1,11 +1,15 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstring>
+
 #include <utility>
 #include <vector>
 
 #include "result.hpp"
 #include "serialized_component_batch.hpp"
+#include "util.hpp"
 
 namespace rerun {
     /// The ComponentBatchAdaptor trait is responsible for mapping an input argument to a
@@ -29,14 +33,14 @@ namespace rerun {
     /// input)` in order to to accidentally borrow data that is passed in as a temporary!
     ///
     /// TODO(andreas): Point to an example here and in the assert.
-    template <typename TComponent, typename TInput>
+    template <typename TComponent, typename TInput, typename Enable = std::enable_if_t<true>>
     struct ComponentBatchAdapter {
         template <typename... Ts>
         struct NoAdapterFor : std::false_type {};
 
+        // `NoAdapterFor` always evaluates to false, but in a way that requires template instantiation.
         static_assert(
-            NoAdapterFor<TComponent, TInput>::value, // Always evaluate to false, but in a way that
-                                                     // requires template instantiation.
+            NoAdapterFor<TComponent, TInput>::value,
             "ComponentBatchAdapter is not implemented for this type. "
             "It is implemented for for single components as well as std::vector, std::array, and "
             "c-arrays of components. "
@@ -46,7 +50,7 @@ namespace rerun {
         );
     };
 
-    /// Type of ownership of the the batch's data.
+    /// Type of ownership of the batch's data.
     ///
     /// User access to this is typically only needed for debugging and testing.
     enum class BatchOwnership {
@@ -82,8 +86,8 @@ namespace rerun {
 
         /// Type of an adapter given input types Ts.
         template <typename T>
-        using TAdapter =
-            ComponentBatchAdapter<TComponent, std::remove_cv_t<std::remove_reference_t<T>>>;
+        using TAdapter = ComponentBatchAdapter<
+            TComponent, std::remove_cv_t<std::remove_reference_t<T>>, std::enable_if_t<true>>;
 
         /// Creates a new empty component batch.
         ///
@@ -152,7 +156,12 @@ namespace rerun {
 
         /// Move assignment
         void operator=(ComponentBatch<TComponent>&& other) {
-            this->swap(other);
+            // Need to disable the maybe-uninitialized here.  It seems like the compiler may be confused in situations where
+            // we are assigning into an unused optional from a temporary. The fact that this hits the move-assignment without
+            // having called the move constructor is suspicious though and hints of an actual bug.
+            //
+            // See: https://github.com/rerun-io/rerun/issues/4027
+            WITH_MAYBE_UNINITIALIZED_DISABLED(this->swap(other);)
         }
 
         /// Swaps the content of this component batch with another.
@@ -271,7 +280,9 @@ namespace rerun {
 
             std::vector<T> vector_owned;
 
-            ComponentBatchStorage() {}
+            ComponentBatchStorage() {
+                memset(reinterpret_cast<void*>(this), 0, sizeof(ComponentBatchStorage));
+            }
 
             ~ComponentBatchStorage() {}
         };
@@ -291,6 +302,36 @@ namespace rerun {
 
         ComponentBatch<TComponent> operator()(std::vector<TComponent>&& input) {
             return ComponentBatch<TComponent>::take_ownership(std::move(input));
+        }
+    };
+
+    /// Adapter from std::vector<T> where T can be converted to TComponent
+    template <typename TComponent, typename T>
+    struct ComponentBatchAdapter<
+        TComponent, std::vector<T>,
+        std::enable_if_t<
+            !std::is_same_v<TComponent, T> && std::is_constructible_v<TComponent, const T&>>> {
+        ComponentBatch<TComponent> operator()(const std::vector<T>& input) {
+            std::vector<TComponent> transformed(input.size());
+
+            std::transform(input.begin(), input.end(), transformed.begin(), [](const T& datum) {
+                return TComponent(datum);
+            });
+
+            return ComponentBatch<TComponent>::take_ownership(std::move(transformed));
+        }
+
+        ComponentBatch<TComponent> operator()(std::vector<T>&& input) {
+            std::vector<TComponent> transformed(input.size());
+
+            std::transform(
+                std::make_move_iterator(input.begin()),
+                std::make_move_iterator(input.end()),
+                transformed.begin(),
+                [](T&& datum) { return TComponent(std::move(datum)); }
+            );
+
+            return ComponentBatch<TComponent>::take_ownership(std::move(transformed));
         }
     };
 

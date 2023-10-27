@@ -29,21 +29,26 @@ namespace rerun {
           public:
             // Extensions to generated type defined in 'tensor_data_ext.cpp'
 
-            /// Construct a 1D tensor with the given buffer.
-            static TensorData one_dim(rerun::datatypes::TensorBuffer buffer) {
-                auto data = rerun::components::TensorData{};
-                data.data = rerun::datatypes::TensorData::one_dim(std::move(buffer));
-                return data;
-            }
+            /// New Tensor from dimensions and tensor buffer.
+            TensorData(
+                std::vector<rerun::datatypes::TensorDimension> shape,
+                rerun::datatypes::TensorBuffer buffer
+            )
+                : data(rerun::datatypes::TensorData(std::move(shape), std::move(buffer))) {}
 
           public:
             TensorData() = default;
 
-            TensorData(rerun::datatypes::TensorData _data) : data(std::move(_data)) {}
+            TensorData(rerun::datatypes::TensorData data_) : data(std::move(data_)) {}
 
-            TensorData& operator=(rerun::datatypes::TensorData _data) {
-                data = std::move(_data);
+            TensorData& operator=(rerun::datatypes::TensorData data_) {
+                data = std::move(data_);
                 return *this;
+            }
+
+            /// Cast to the underlying TensorData datatype
+            operator rerun::datatypes::TensorData() const {
+                return data;
             }
 
             /// Returns the arrow data type this type corresponds to.

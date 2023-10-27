@@ -10,6 +10,7 @@
 #include "../error.hpp"
 #include "../indicator_component.hpp"
 #include "../result.hpp"
+#include "../util.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -36,20 +37,20 @@ namespace rerun {
         ///
         /// int main() {
         ///     auto rec = rerun::RecordingStream("rerun_example_image_simple");
-        ///     rec.connect().throw_on_failure();
+        ///     rec.spawn().throw_on_failure();
         ///
         ///     // Create a synthetic image.
-        ///     const int HEIGHT = 8;
-        ///     const int WIDTH = 12;
+        ///     const int HEIGHT = 200;
+        ///     const int WIDTH = 300;
         ///     std::vector<uint8_t> data(WIDTH * HEIGHT * 3, 0);
         ///     for (size_t i = 0; i <data.size(); i += 3) {
         ///         data[i] = 255;
         ///     }
-        ///     for (auto y = 0; y <4; ++y) { // top half
-        ///         auto row = data.begin() + y * WIDTH * 3;
-        ///         for (auto i = 0; i <6 * 3; i += 3) { // left half
-        ///             row[i] = 0;
-        ///             row[i + 1] = 255;
+        ///     for (size_t y = 50; y <150; ++y) {
+        ///         for (size_t x = 50; x <150; ++x) {
+        ///             data[(y * WIDTH + x) * 3 + 0] = 0;
+        ///             data[(y * WIDTH + x) * 3 + 1] = 255;
+        ///             data[(y * WIDTH + x) * 3 + 2] = 0;
         ///         }
         ///     }
         ///
@@ -95,7 +96,8 @@ namespace rerun {
             /// Objects with higher values are drawn on top of those with lower values.
             Image with_draw_order(rerun::components::DrawOrder _draw_order) && {
                 draw_order = std::move(_draw_order);
-                return std::move(*this);
+                // See: https://github.com/rerun-io/rerun/issues/4027
+                WITH_MAYBE_UNINITIALIZED_DISABLED(return std::move(*this);)
             }
 
             /// Returns the number of primary instances of this archetype.

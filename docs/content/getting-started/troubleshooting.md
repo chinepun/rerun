@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-order: 7
+order: 8
 ---
 
 You can set `RUST_LOG=debug` before running to get some verbose logging output.
@@ -32,7 +32,7 @@ rerun reset
 ```
 
 ## Graphics issues
-<--! This section is linked to from `crates/re_viewer/src/native.rs` -->
+<!-- This section is linked to from `crates/re_viewer/src/native.rs` -->
 
 [Wgpu](https://github.com/gfx-rs/wgpu) (the graphics API we use) maintains a list of
 [known driver issues](https://github.com/gfx-rs/wgpu/wiki/Known-Driver-Issues) and workarounds for them.

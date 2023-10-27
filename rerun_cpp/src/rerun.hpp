@@ -1,4 +1,8 @@
 // The Rerun C++ SDK.
+//
+// For more information, read our [getting-started guide](https://www.rerun.io/docs/getting-started/cpp?speculative-link)
+// or visit <https://www.rerun.io/>.
+
 #pragma once
 
 // Built-in Rerun types (largely generated from an interface definition language)
@@ -7,10 +11,12 @@
 #include "rerun/datatypes.hpp"
 
 // Rerun API.
+#include "rerun/config.hpp"
 #include "rerun/error.hpp"
 #include "rerun/recording_stream.hpp"
 #include "rerun/result.hpp"
 #include "rerun/sdk_info.hpp"
+#include "rerun/spawn.hpp"
 
 // Archetypes are the quick-and-easy default way of logging data to Rerun.
 // Make them available in the rerun namespace.
@@ -22,6 +28,7 @@ namespace rerun {
     using components::HalfSizes2D;
     using components::HalfSizes3D;
     using components::InstanceKey;
+    using components::LineStrip3D;
     using components::Material;
     using components::MediaType;
     using components::MeshProperties;

@@ -45,7 +45,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.x
+          python-version: 3.11
 
       - name: Check links
         run: |
@@ -73,13 +73,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.x
+          python-version: 3.11
 
       - name: Install deps
         run: |
           python3 -m pip install -r ./scripts/ci/requirements-crates.txt
 
-      # for `taplo fmt` done in `crates.py version --bump`
       - name: Install taplo-cli
         uses: taiki-e/install-action@v2
         with:
@@ -126,6 +125,9 @@ jobs:
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
           echo "current=$current"   >> "$GITHUB_OUTPUT"
           echo "final=$final"       >> "$GITHUB_OUTPUT"
+
+      - name: "Taplo fmt"
+        run: taplo fmt
 
       - name: Commit new version
         id: commit
@@ -253,7 +255,6 @@ jobs:
         run: |
           python3 -m pip install -r scripts/ci/requirements-crates.txt
 
-      # for `taplo fmt` done in `crates.py version --bump`
       - name: Install taplo-cli
         uses: taiki-e/install-action@v2
         with:
@@ -262,16 +263,11 @@ jobs:
       - name: Update version
         id: update-version
         run: |
-          if [ ${{ inputs.release-type }} = "final" ]; then
-            # After a final release, we bump the minor version and append `+dev`.
-            python3 scripts/ci/crates.py version --bump prerelease --dev --pre-id=alpha
-            echo "version=$(python3 scripts/ci/crates.py get-version)" >> "$GITHUB_OUTPUT"
-          else
-            # After an alpha release, we bump the prerelease version and append `+dev`.
-            python3 scripts/ci/crates.py version --bump minor
-            python3 scripts/ci/crates.py version --bump prerelease --dev --pre-id=alpha
-            echo "version=$(python3 scripts/ci/crates.py get-version)" >> "$GITHUB_OUTPUT"
-          fi
+          python3 scripts/ci/crates.py version --bump auto
+          echo "version=$(python3 scripts/ci/crates.py get-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Taplo fmt"
+        run: taplo fmt
 
       - name: Commit new version
         run: |
@@ -314,7 +310,7 @@ jobs:
           cargo_install="cargo install rerun-cli@${{ needs.version.outputs.current }}"
 
           cat <<EOF > comment-body.txt
-          Version ${{ needs.version.outputs.current }} published sucessfully.
+          Version ${{ needs.version.outputs.current }} published successfully.
 
           | artifact                    | install        |
           | --------------------------- | -------------- |

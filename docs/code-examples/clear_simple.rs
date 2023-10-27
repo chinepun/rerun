@@ -1,10 +1,10 @@
-//! Log a batch of 3D arrows.
+//! Log and then clear data.
 
 use rerun::external::glam;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (rec, storage) =
-        rerun::RecordingStreamBuilder::new("rerun_example_clear_simple").memory()?;
+    let rec = rerun::RecordingStreamBuilder::new("rerun_example_clear_simple")
+        .spawn(rerun::default_flush_timeout())?;
 
     #[rustfmt::skip]
     let (vectors, origins, colors) = (
@@ -28,6 +28,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rec.log(format!("arrows/{i}"), &rerun::Clear::flat())?;
     }
 
-    rerun::native_viewer::show(storage.take())?;
     Ok(())
 }

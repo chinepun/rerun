@@ -2,7 +2,7 @@
 #include <cmath>
 #include <rerun.hpp>
 
-const float TAU = static_cast<float>(2.0 * M_PI);
+constexpr float TAU = 6.28318530717958647692528676655900577f;
 
 void log_hand(
     rerun::RecordingStream& rec, const char* name, int step, float angle, float length, float width,
@@ -19,11 +19,11 @@ void log_hand(
     rec.set_time_seconds("sim_time", step);
 
     rec.log(
-        (std::string("world/") + name + "_pt").c_str(),
+        std::string("world/") + name + "_pt",
         rerun::Points3D(rerun::components::Position3D(tip)).with_colors(color)
     );
     rec.log(
-        (std::string("world/") + name + "hand").c_str(),
+        std::string("world/") + name + "hand",
         rerun::Arrows3D::from_vectors(rerun::components::Vector3D(tip))
             .with_origins({{0.0f, 0.0f, 0.0f}})
             .with_colors(color)
@@ -31,7 +31,7 @@ void log_hand(
     );
 }
 
-int main(int argc, char** argv) {
+int main() {
     const float LENGTH_S = 20.0f;
     const float LENGTH_M = 10.0f;
     const float LENGTH_H = 4.0f;
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     const int num_steps = 10000;
 
     auto rec = rerun::RecordingStream("rerun_example_clock");
-    rec.connect().throw_on_failure();
+    rec.spawn().throw_on_failure();
 
     rec.log_timeless("world", rerun::ViewCoordinates::RIGHT_HAND_Y_UP);
     rec.log_timeless("world/frame", rerun::Boxes3D::from_half_sizes({{LENGTH_S, LENGTH_S, 1.0f}}));
