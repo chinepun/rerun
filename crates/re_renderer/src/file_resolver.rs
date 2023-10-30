@@ -849,7 +849,7 @@ mod tests_file_resolver {
 
         resolver
             .populate("/shaders2/shader1.wgsl")
-            .map_err(re_error::format)
+            // .map_err(re_error::format)
             .unwrap();
     }
 
@@ -901,7 +901,7 @@ mod tests_file_resolver {
 
         resolver
             .populate("/shaders3/shader1.wgsl")
-            .map_err(re_error::format)
+            // .map_err(re_error::format)
             .unwrap();
     }
 }
