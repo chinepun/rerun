@@ -6,48 +6,47 @@ order: 2
 ## Setup
 Before adding Rerun to your application, start by [installing the viewer](installing-viewer.md).
 
-The Rerun C++ SDK depends on an install of the `arrow-cpp` library on your system using.
-
-🚧 In the future we want to make this part of the setup easier.
-
-### Installing arrow-cpp with pixi
-See our [how-to guide](../howto/arrow-cpp-pixi.md) on using pixi to install `arrow-cpp`.
-
-### Installing arrow-cpp manually
-Find more information about other package managers at the official Arrow Apache [install guide](https://arrow.apache.org/install/).
-
 ## Learning by example
 If you prefer to learn by example, check out our example repository which uses the Rerun C++ SDK to log some data from Eigen and OpenCV: <https://github.com/rerun-io/cpp-example-opencv-eigen>.
 
 ## Using Rerun with CMake
 
 Assuming you are starting with a bare-bones `CMakeLists.txt` such as:
-```
-cmake_minimum_required(VERSION 3.16)
+
+```cmake
+cmake_minimum_required(VERSION 3.16...3.27)
 project(example_minimal LANGUAGES CXX)
 
 add_executable(example_minimal main.cpp)
 ```
 
 You can add Rerun to your project using `FetchContent`
+
 ```cmake
 include(FetchContent)
-FetchContent_Declare(rerun_sdk URL https://github.com/rerun-io/rerun/releases/download/prerelease/rerun_cpp_sdk.zip) # TODO(#3962): update link
+FetchContent_Declare(rerun_sdk URL
+    https://github.com/rerun-io/rerun/releases/latest/download/rerun_cpp_sdk.zip)
 FetchContent_MakeAvailable(rerun_sdk)
 ```
-This will download a bundle with pre-built Rerun C static libraries for most desktop platforms, all Rerun C++ sources and headers, as well as CMake build instructions for them.
+This will download a bundle with pre-built Rerun C static libraries for most desktop platforms,
+all Rerun C++ sources and headers, as well as CMake build instructions for them.
+By default this will in turn download & build [Apache Arrow](https://arrow.apache.org/)'s C++ library which is required to build the Rerun C++.
+See [Install arrow-cpp](../howto/arrow-cpp-install.md) to learn more about this step and how to use an existing install.
 
 Currently, Rerun SDK works with C++17 or newer, so you need to add this property to your target:
+
 ```cmake
 set_property(TARGET example_minimal PROPERTY CXX_STANDARD 17)
 ```
 
 And finally, make sure you link with `rerun_sdk`:
+
 ```cmake
 target_link_libraries(example_minimal PRIVATE rerun_sdk)
 ```
 
 Combining the above, a minimal self-contained `CMakeLists.txt` looks like:
+
 ```cmake
 cmake_minimum_required(VERSION 3.16...3.27)
 project(example_minimal LANGUAGES CXX)
@@ -56,7 +55,8 @@ add_executable(example_minimal main.cpp)
 
 # Download the rerun_sdk
 include(FetchContent)
-FetchContent_Declare(rerun_sdk URL https://github.com/rerun-io/rerun/releases/download/prerelease/rerun_cpp_sdk.zip) # TODO(#3962): update link
+FetchContent_Declare(rerun_sdk URL
+    https://github.com/rerun-io/rerun/releases/latest/download/rerun_cpp_sdk.zip)
 FetchContent_MakeAvailable(rerun_sdk)
 
 # Rerun requires at least C++17, but it should be compatible with newer versions.
@@ -68,8 +68,8 @@ target_link_libraries(example_minimal PRIVATE rerun_sdk)
 
 ## Logging some data
 Add the following code to your `main.cpp`
-<!-- TODO(#3962): Update Link -->
-(This example also lives in the `rerun` source tree [example](https://github.com/rerun-io/rerun/blob/main/examples/cpp/minimal/main.cpp))
+(this example also lives in the `rerun` source tree [example](https://github.com/rerun-io/rerun/blob/latest/examples/cpp/minimal/main.cpp)):
+
 ```cpp
 #include <rerun.hpp>
 #include <rerun/demo_utils.hpp>
@@ -78,9 +78,9 @@ using namespace rerun::demo;
 
 int main() {
     // Create a new `RecordingStream` which sends data over TCP to the viewer process.
-    auto rec = rerun::RecordingStream("rerun_example_cpp");
+    const auto rec = rerun::RecordingStream("rerun_example_cpp");
     // Try to spawn a new viewer instance.
-    rec.spawn().throw_on_failure();
+    rec.spawn().exit_on_failure();
 
     // Create some data using the `grid` utility function.
     auto points = grid<rerun::Position3D, float>({-10.f, -10.f, -10.f}, {10.f, 10.f, 10.f}, 10);
@@ -93,7 +93,7 @@ int main() {
 
 ## Building and running
 
-You can configure cmake, build, and run you application like so:
+You can configure cmake, build, and run your application like so:
 ```bash
 cmake -B build
 cmake --build build -j
@@ -130,3 +130,5 @@ If you'd rather learn from examples, check out the [example gallery](/examples) 
 There's also a stand-alone example that shows [interop with Eigen and OpenCV](https://github.com/rerun-io/cpp-example-opencv-eigen).
 
 TODO(#3977): Note that this is still an area of active development and there's going to be major improvements for library interop in upcoming versions.
+
+To learn more about how to configure the C++ SDK's CMake file, check [C++ SDK CMake](../reference/cpp-sdk-cmake.md).

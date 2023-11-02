@@ -3,8 +3,8 @@
 #include <rerun.hpp>
 
 int main() {
-    auto rec = rerun::RecordingStream("rerun_example_line_strip3d");
-    rec.spawn().throw_on_failure();
+    const auto rec = rerun::RecordingStream("rerun_example_line_strip3d");
+    rec.spawn().exit_on_failure();
 
     rerun::LineStrip3D linestrip({
         {0.f, 0.f, 0.f},
