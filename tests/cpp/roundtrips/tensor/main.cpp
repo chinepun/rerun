@@ -5,8 +5,8 @@
 #include <rerun/recording_stream.hpp>
 
 int main(int, char** argv) {
-    auto rec = rerun::RecordingStream("rerun_example_roundtrip_tensor");
-    rec.save(argv[1]).throw_on_failure();
+    const auto rec = rerun::RecordingStream("rerun_example_roundtrip_tensor");
+    rec.save(argv[1]).exit_on_failure();
 
     std::vector<rerun::datatypes::TensorDimension> dimensions{{3, 4, 5, 6}};
 
