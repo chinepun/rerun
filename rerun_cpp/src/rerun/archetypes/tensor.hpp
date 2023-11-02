@@ -31,8 +31,8 @@ namespace rerun {
         /// #include <vector>
         ///
         /// int main() {
-        ///     auto rec = rerun::RecordingStream("rerun_example_tensor_simple");
-        ///     rec.spawn().throw_on_failure();
+        ///     const auto rec = rerun::RecordingStream("rerun_example_tensor_simple");
+        ///     rec.spawn().exit_on_failure();
         ///
         ///     std::default_random_engine gen;
         ///     // On MSVC uint8_t distributions are not supported.
@@ -68,7 +68,7 @@ namespace rerun {
 
             /// Update the `names` of the contained [`TensorData`] dimensions.
             ///
-            /// Any existing Dimension names will be be overwritten.
+            /// Any existing Dimension names will be overwritten.
             ///
             /// If too many, or too few names are provided, this function will call
             /// Error::handle and then proceed to only update the subset of names that it can.

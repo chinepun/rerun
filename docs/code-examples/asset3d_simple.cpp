@@ -1,4 +1,4 @@
-// Log a a simple 3D asset.
+// Log a simple 3D asset.
 
 #include <rerun.hpp>
 
@@ -14,8 +14,8 @@ int main(int argc, char* argv[]) {
 
     const auto path = argv[1];
 
-    auto rec = rerun::RecordingStream("rerun_example_asset3d_simple");
-    rec.spawn().throw_on_failure();
+    const auto rec = rerun::RecordingStream("rerun_example_asset3d_simple");
+    rec.spawn().exit_on_failure();
 
     rec.log_timeless("world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP); // Set an up-axis
     rec.log("world/asset", rerun::Asset3D::from_file(path).value_or_throw());

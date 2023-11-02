@@ -370,8 +370,8 @@ jobs:
           # Only check c/cpp/h/hpp (default checks also .proto and others)
           include-regex: ^.*\.(c|cpp|h|hpp)$
 
-  cpp-tests:
-    name: C++ tests
+  cpp-tests-linux:
+    name: C++ tests Linux
     runs-on: ubuntu-latest
     container:
       image: rerunio/ci_docker:0.10.0
@@ -382,6 +382,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || '' }}
 
+      - uses: prefix-dev/setup-pixi@v0.3.0
+        with:
+          pixi-version: v0.6.0
+          cache: true
+
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
         with:
@@ -391,15 +396,50 @@ jobs:
           workload_identity_provider: ${{ secrets.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
 
-      - name: Build and run rerun_cpp tests
-        shell: bash
-        run: ./rerun_cpp/build_and_run_tests.sh --werror
+      # TODO(emilk): make this work somehow. Right now this just results in
+      # > Compiler: GNU 12.3.0 (/__w/rerun/rerun/.pixi/env/bin/x86_64-conda-linux-gnu-c++)
+      # 😭
+      # - name: Build and run C++ tests with clang++
+      #   shell: bash
+      #   run: |
+      #     pixi run cpp-clean
+      #     RERUN_WERROR=ON RERUN_USE_ASAN=ON CXX=clang++ pixi run cpp-build-all
+      #     RERUN_WERROR=ON RERUN_USE_ASAN=ON CXX=clang++ pixi run cpp-test
 
-      - name: Build examples
+      - name: Build and run C++ tests with g++
         shell: bash
-        run: ./examples/cpp/build_all.sh --werror
+        run: |
+          pixi run cpp-clean
+          RERUN_WERROR=ON RERUN_USE_ASAN=ON CXX=g++ pixi run cpp-build-all
+          RERUN_WERROR=ON RERUN_USE_ASAN=ON CXX=g++ pixi run cpp-test
 
-      - name: Build doc-code examples
+  cpp-tests-windows:
+    name: C++ tests Windows
+    runs-on: windows-latest-8-cores
+    env:
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || '' }}
+
+      - uses: prefix-dev/setup-pixi@v0.3.0
+        with:
+          pixi-version: v0.6.0
+          cache: true
+
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache_key: "build-windows"
+          # Cache will be produced by `reusable_checks/rs-lints`
+          save_cache: false
+          workload_identity_provider: ${{ secrets.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+
+      - name: Build and run C++ tests with MSVC
         shell: bash
-        run: ./docs/code-examples/cpp_build_all.sh --werror
-
+        run: |
+          pixi run cpp-clean
+          RERUN_WERROR=ON pixi run cpp-build-all
+          RERUN_WERROR=ON pixi run cpp-test
