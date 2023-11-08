@@ -9,7 +9,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
 namespace arrow {
     class DataType;
@@ -49,7 +48,7 @@ namespace rerun {
             );
 
             /// Fills an arrow array builder with an array of this type.
-            static Error fill_arrow_array_builder(
+            static rerun::Error fill_arrow_array_builder(
                 arrow::StructBuilder* builder, const TensorDimension* elements, size_t num_elements
             );
         };
