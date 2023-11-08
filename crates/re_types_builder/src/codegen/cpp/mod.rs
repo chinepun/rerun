@@ -207,50 +207,56 @@ fn hpp_type_extensions(
         return (quote! {}, None);
     };
 
-    let target_header = format!("{filename_stem}.hpp");
-    for line in content.lines() {
-        if line.starts_with("#include") {
-            if let Some(start) = line.find('\"') {
-                let end = line.rfind('\"').unwrap_or_else(|| {
-                    panic!("Expected to find '\"' include line {line} in file {extension_file:?}")
-                });
+    const COPY_TO_HEADER_START_MARKER: &str = "<CODEGEN_COPY_TO_HEADER>";
+    const COPY_TO_HEADER_END_MARKER: &str = "</CODEGEN_COPY_TO_HEADER>";
 
-                let include = &line[start + 1..end];
-                if include != target_header {
-                    includes.insert_relative(include);
-                }
-            } else if let Some(start) = line.find('<') {
-                let end = line.rfind('>').unwrap_or_else(|| {
-                    panic!(
+    let mut remaining_content = &content[..];
+    let mut hpp_extension_string = String::new();
+
+    while let Some(start) = remaining_content.find(COPY_TO_HEADER_START_MARKER) {
+        let end = remaining_content.find(COPY_TO_HEADER_END_MARKER).unwrap_or_else(||
+            panic!("C++ extension file has a start marker but no end marker. Expected to find '{COPY_TO_HEADER_END_MARKER}' in {extension_file:?}")
+        );
+        let end = remaining_content[..end].rfind('\n').unwrap_or_else(||
+            panic!("Expected line break at some point before {COPY_TO_HEADER_END_MARKER} in {extension_file:?}")
+        );
+
+        let extensions = &remaining_content[start + COPY_TO_HEADER_START_MARKER.len()..end];
+
+        // Comb through any includes in the extension string.
+        for line in extensions.lines() {
+            if line.starts_with("#include") {
+                if let Some(start) = line.find('\"') {
+                    let end = line.rfind('\"').unwrap_or_else(|| {
+                        panic!(
+                            "Expected to find ending '\"' in include line {line} in file {extension_file:?}"
+                        )
+                    });
+
+                    includes.insert_relative(&line[start + 1..end]);
+                } else if let Some(start) = line.find('<') {
+                    let end = line.rfind('>').unwrap_or_else(|| {
+                        panic!(
                         "Expected to find or '>' in include line {line} in file {extension_file:?}"
                     )
-                });
-                includes.insert_system(&line[start + 1..end]);
+                    });
+                    includes.insert_system(&line[start + 1..end]);
+                } else {
+                    panic!("Expected to find '\"' or '<' in include line {line} in file {extension_file:?}");
+                }
             } else {
-                panic!("Expected to find '\"' or '<' in include line {line} in file {extension_file:?}");
+                hpp_extension_string += line;
+                hpp_extension_string += "\n";
             }
         }
+
+        remaining_content = &remaining_content[end + COPY_TO_HEADER_END_MARKER.len()..];
     }
-
-    const COPY_TO_HEADER_START_MARKER: &str = "[CODEGEN COPY TO HEADER START]";
-    const COPY_TO_HEADER_END_MARKER: &str = "[CODEGEN COPY TO HEADER END]";
-
-    let start = content.find(COPY_TO_HEADER_START_MARKER).unwrap_or_else(||
-        panic!("C++ extension file missing start marker. Without it, nothing is exposed to the header, i.e. not accessible to the user. Expected to find '{COPY_TO_HEADER_START_MARKER}' in {extension_file:?}")
-    );
-
-    let end = content.find(COPY_TO_HEADER_END_MARKER).unwrap_or_else(||
-        panic!("C++ extension file has a start marker but no end marker. Expected to find '{COPY_TO_HEADER_START_MARKER}' in {extension_file:?}")
-    );
-    let end = content[..end].rfind('\n').unwrap_or_else(||
-        panic!("Expected line break at some point before {COPY_TO_HEADER_END_MARKER} in {extension_file:?}")
-    );
 
     let comment = quote_comment(&format!(
         "Extensions to generated type defined in '{}'",
         extension_file.file_name().unwrap()
     ));
-    let hpp_extension_string = content[start + COPY_TO_HEADER_START_MARKER.len()..end].to_owned();
     let hpp_type_extensions = quote! {
         public:
         #NEWLINE_TOKEN
@@ -402,7 +408,7 @@ impl QuotedObject {
             let method_ident = format_ident!("with_{}", obj_field.name);
             let field_type = quote_archetype_field_type(&mut hpp_includes, obj_field);
 
-            hpp_includes.insert_rerun("util.hpp");
+            hpp_includes.insert_rerun("warning_macros.hpp");
             let gcc_ignore_comment =
                 quote_comment("See: https://github.com/rerun-io/rerun/issues/4027");
 
@@ -690,7 +696,7 @@ impl QuotedObject {
         // Putting non-POD types in a union requires C++11.
         //
         // enum class Rotation3DTag : uint8_t {
-        //     NONE = 0,
+        //     None = 0,
         //     Quaternion,
         //     AxisAngle,
         // };
@@ -722,7 +728,7 @@ impl QuotedObject {
             let comment = quote_doc_comment(
                 "Having a special empty state makes it possible to implement move-semantics. \
                 We need to be able to leave the object in a state which we can run the destructor on.");
-            let tag_name = format_ident!("NONE");
+            let tag_name = format_ident!("None");
             quote! {
                 #NEWLINE_TOKEN
                 #comment
@@ -854,7 +860,7 @@ impl QuotedObject {
             let destructor_match_arms = std::iter::once({
                 let comment = quote_comment("Nothing to destroy");
                 quote! {
-                    case detail::#tag_typename::NONE: {
+                    case detail::#tag_typename::None: {
                         #NEWLINE_TOKEN
                         #comment
                     } break;
@@ -948,7 +954,7 @@ impl QuotedObject {
                         switch (other._tag) {
                             #(#placement_new_arms)*
 
-                            case detail::#tag_typename::NONE: {
+                            case detail::#tag_typename::None: {
                                 // there is nothing to copy
                             } break;
                         }
@@ -967,7 +973,7 @@ impl QuotedObject {
                                 #trivial_memcpy
                             } break;
 
-                            case detail::#tag_typename::NONE: {
+                            case detail::#tag_typename::None: {
                                 // there is nothing to copy
                             } break;
                         }
@@ -1020,7 +1026,7 @@ impl QuotedObject {
                     struct #pascal_case_ident {
                         #(#constants_hpp;)*
 
-                        #pascal_case_ident() : _tag(detail::#tag_typename::NONE) {}
+                        #pascal_case_ident() : _tag(detail::#tag_typename::None) {}
 
                         #copy_constructor
 
@@ -1235,7 +1241,7 @@ fn new_arrow_array_builder_method(
         },
         definition_body: quote! {
             if (memory_pool == nullptr) {
-                return Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
+                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
             }
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
@@ -1264,7 +1270,7 @@ fn fill_arrow_array_builder_method(
         docs: "Fills an arrow array builder with an array of this type.".into(),
         declaration: MethodDeclaration {
             is_static: true,
-            return_type: quote! { Error },
+            return_type: quote! { rerun::Error },
             // TODO(andreas): Pass in validity map.
             name_and_parameters: quote! {
                 fill_arrow_array_builder(arrow::#arrow_builder_type* #builder, const #type_ident* elements, size_t num_elements)
@@ -1272,10 +1278,10 @@ fn fill_arrow_array_builder_method(
         },
         definition_body: quote! {
             if (builder == nullptr) {
-                return Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
+                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
             }
             if (elements == nullptr) {
-                return Error(ErrorCode::UnexpectedNullArgument, "Cannot serialize null pointer to arrow array.");
+                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Cannot serialize null pointer to arrow array.");
             }
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
@@ -1415,7 +1421,7 @@ fn quote_fill_arrow_array_builder(
                 quote! {
                     (void)num_elements;
                     if (true) { // Works around unreachability compiler warning.
-                        return Error(ErrorCode::NotImplemented, "TODO(andreas) Handle nullable extensions");
+                        return rerun::Error(ErrorCode::NotImplemented, "TODO(andreas) Handle nullable extensions");
                     }
                 }
             } else {
@@ -1470,7 +1476,7 @@ fn quote_fill_arrow_array_builder(
                             let error = format!("Failed to serialize {}::{}: nullable list types in unions not yet implemented", obj.name, variant.name);
                             quote! {
                                 (void)#variant_builder;
-                                return Error(ErrorCode::NotImplemented, #error);
+                                return rerun::Error(ErrorCode::NotImplemented, #error);
                             }
                         } else if arrow_builder_type == "ListBuilder" {
                             let field_name = format_ident!("{}", variant.snake_case_name());
@@ -1522,7 +1528,7 @@ fn quote_fill_arrow_array_builder(
                                     let error = format!("Failed to serialize {}::{}: objects ({:?}) in unions not yet implemented", obj.name, variant.name, element_type);
                                     quote! {
                                         (void)#variant_builder;
-                                        return Error(ErrorCode::NotImplemented, #error);
+                                        return rerun::Error(ErrorCode::NotImplemented, #error);
                                     }
                                 }
                             }
@@ -1530,7 +1536,7 @@ fn quote_fill_arrow_array_builder(
                             let error = format!("Failed to serialize {}::{}: {} in unions not yet implemented", obj.name, variant.name, arrow_builder_type);
                             quote! {
                                 (void)#variant_builder;
-                                return Error(ErrorCode::NotImplemented, #error);
+                                return rerun::Error(ErrorCode::NotImplemented, #error);
                             }
                         }
                     } else {
@@ -1559,7 +1565,7 @@ fn quote_fill_arrow_array_builder(
                         #NEWLINE_TOKEN
                         #NEWLINE_TOKEN
                         switch (union_instance._tag) {
-                            case detail::#tag_name::NONE: {
+                            case detail::#tag_name::None: {
                                 ARROW_RETURN_NOT_OK(variant_builder_untyped->AppendNull());
                             } break;
                             #(#tag_cases)*
