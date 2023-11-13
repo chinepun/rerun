@@ -1,9 +1,9 @@
 use std::{hash::Hash, path::PathBuf};
 
 use ahash::HashSet;
-use anyhow::Context as _;
+// use anyhow::Context as _;
 
-use crate::{debug_label::DebugLabel, FileResolver, FileSystem};
+use crate::{debug_label::DebugLabel, file_resolver::FileResolverError, FileResolver, FileSystem};
 
 use super::{
     resource::{PoolError, ResourceStatistics},
@@ -65,11 +65,13 @@ impl ShaderModuleDesc {
         resolver: &mut FileResolver<Fs>,
         shader_text_workaround_replacements: &[(String, String)],
     ) -> wgpu::ShaderModule {
-        let mut source_interpolated = resolver
-            .populate(&self.source)
-            .context("couldn't resolve shader module's contents")
-            .map_err(|err| re_log::error!(err=%re_error::format(err)))
-            .unwrap_or_default();
+        let mut source_interpolated = match resolver.populate(&self.source) {
+            Ok(contents) => contents,
+            Err(file_err) => {
+                re_log::error!("couldn't resolve shader module's contents {}", file_err);
+                Default::default()
+            }
+        };
 
         for (from, to) in shader_text_workaround_replacements
             .iter()

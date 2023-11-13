@@ -298,6 +298,9 @@ pub enum FileResolverError {
     #[error("couldn't resolve import clause path at {path:?}")]
     CannotResolveImportPath { path: PathBuf },
 
+    #[error("couldn't resolve shader module's contents")]
+    CannotResolveShaderModules,
+
     #[error(transparent)]
     ReadError(#[from] FileSystemError),
 }

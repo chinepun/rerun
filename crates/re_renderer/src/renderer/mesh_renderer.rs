@@ -12,7 +12,7 @@ use crate::{
     draw_phases::{DrawPhase, OutlineMaskProcessor},
     include_shader_module,
     mesh::{gpu_data::MaterialUniformBuffer, mesh_vertices, GpuMesh, Mesh},
-    resource_managers::{GpuMeshHandle, ResourceHandle},
+    resource_managers::{GpuMeshHandle, ResourceHandle, ResourceManagerError},
     view_builder::ViewBuilder,
     wgpu_resources::{
         BindGroupLayoutDesc, BufferDesc, GpuBindGroupLayoutHandle, GpuBuffer,
@@ -147,13 +147,25 @@ impl Default for MeshInstance {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum MeshRendererError {
+    #[error(transparent)]
+    AllocationError(#[from] crate::allocator::CpuWriteGpuReadError),
+
+    #[error(transparent)]
+    MeshResolverError(#[from] ResourceManagerError),
+}
+
 impl MeshDrawData {
     /// Transforms and uploads mesh instance data to be consumed by gpu.
     ///
     /// Try bundling all mesh instances into a single draw data instance whenever possible.
     /// If you pass zero mesh instances, subsequent drawing will do nothing.
     /// Mesh data itself is gpu uploaded if not already present.
-    pub fn new(ctx: &mut RenderContext, instances: &[MeshInstance]) -> anyhow::Result<Self> {
+    pub fn new(
+        ctx: &mut RenderContext,
+        instances: &[MeshInstance],
+    ) -> Result<MeshDrawData, MeshRendererError> {
         re_tracing::profile_function!();
 
         let _mesh_renderer = ctx.renderers.write().get_or_create::<_, MeshRenderer>(
