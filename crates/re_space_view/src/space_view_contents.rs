@@ -2,23 +2,21 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use nohash_hasher::IntMap;
 use re_data_store::{EntityPath, EntityProperties, EntityPropertyMap};
-use re_viewer_context::{DataBlueprintGroupHandle, PerSystemEntities};
+use re_viewer_context::{
+    DataBlueprintGroupHandle, DataResult, EntitiesPerSystemPerClass, PerSystemEntities,
+    SpaceViewId, StoreContext, ViewSystemName,
+};
 use slotmap::SlotMap;
 use smallvec::{smallvec, SmallVec};
 
+use crate::{DataQuery, DataResultHandle, DataResultNode, DataResultTree, PropertyResolver};
+
 /// A grouping of several data-blueprints.
-#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 pub struct DataBlueprintGroup {
     pub display_name: String,
 
-    /// Individual settings. Mutate & display this.
-    pub properties_individual: EntityProperties,
-
-    /// Properties, as inherited from parent. Read from this.
-    ///
-    /// Recalculated at the start of each frame from [`Self::properties_individual`].
-    #[cfg_attr(feature = "serde", serde(skip))]
-    pub properties_projected: EntityProperties,
+    pub group_path: EntityPath,
 
     /// Parent of this blueprint group. Every data blueprint except the root has a parent.
     pub parent: DataBlueprintGroupHandle,
@@ -31,55 +29,42 @@ pub struct DataBlueprintGroup {
     pub entities: BTreeSet<EntityPath>,
 }
 
+impl Default for DataBlueprintGroup {
+    fn default() -> Self {
+        DataBlueprintGroup {
+            display_name: Default::default(),
+            group_path: EntityPath::root(),
+            parent: Default::default(),
+            children: Default::default(),
+            entities: Default::default(),
+        }
+    }
+}
+
 impl DataBlueprintGroup {
     /// Determine whether this `DataBlueprints` has user-edits relative to another `DataBlueprints`
     fn has_edits(&self, other: &Self) -> bool {
         let Self {
             display_name,
-            properties_individual,
-            properties_projected: _,
+            group_path: _,
             parent,
             children,
             entities,
         } = self;
 
         display_name != &other.display_name
-            || properties_individual.has_edits(&other.properties_individual)
             || parent != &other.parent
             || children != &other.children
             || entities != &other.entities
     }
 }
 
-/// Data blueprints for all entity paths in a space view.
-#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
-pub struct DataBlueprints {
-    /// Individual settings. Mutate this.
-    individual: EntityPropertyMap,
-
-    /// Properties, as inherited from parent. Read from this.
-    ///
-    /// Recalculated at the start of each frame from [`Self::individual`].
-    #[cfg_attr(feature = "serde", serde(skip))]
-    projected: EntityPropertyMap,
-}
-
-// Manually implement `PartialEq` since projected is serde skip
-impl DataBlueprints {
-    /// Determine whether this `DataBlueprints` has user-edits relative to another `DataBlueprints`
-    fn has_edits(&self, other: &Self) -> bool {
-        let Self {
-            individual,
-            projected: _,
-        } = self;
-
-        individual.has_edits(&other.individual)
-    }
-}
-
 /// Tree of all data blueprint groups for a single space view.
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 pub struct SpaceViewContents {
+    /// The space view these contents belong to.
+    pub space_view_id: SpaceViewId,
+
     /// All data blueprint groups.
     groups: SlotMap<DataBlueprintGroupHandle, DataBlueprintGroup>,
 
@@ -101,19 +86,19 @@ pub struct SpaceViewContents {
 
     /// Root group, always exists as a placeholder
     root_group_handle: DataBlueprintGroupHandle,
-
-    data_blueprints: DataBlueprints,
 }
 
 /// Determine whether this `DataBlueprintTree` has user-edits relative to another `DataBlueprintTree`
 impl SpaceViewContents {
+    pub const PROPERTIES_PREFIX: &str = "properties";
+
     pub fn has_edits(&self, other: &Self) -> bool {
         let Self {
+            space_view_id: _,
             groups,
             path_to_group,
             per_system_entity_list: _,
             root_group_handle,
-            data_blueprints,
         } = self;
 
         groups.len() != other.groups.len()
@@ -125,12 +110,11 @@ impl SpaceViewContents {
             })
             || *path_to_group != other.path_to_group
             || *root_group_handle != other.root_group_handle
-            || data_blueprints.has_edits(&other.data_blueprints)
     }
 }
 
-impl Default for SpaceViewContents {
-    fn default() -> Self {
+impl SpaceViewContents {
+    pub fn new(id: SpaceViewId) -> Self {
         let mut groups = SlotMap::default();
         let root_group = groups.insert(DataBlueprintGroup::default());
 
@@ -138,11 +122,11 @@ impl Default for SpaceViewContents {
         path_to_blueprint.insert(EntityPath::root(), root_group);
 
         Self {
+            space_view_id: id,
             groups,
             path_to_group: path_to_blueprint,
             per_system_entity_list: BTreeMap::default(),
             root_group_handle: root_group,
-            data_blueprints: DataBlueprints::default(),
         }
     }
 }
@@ -196,16 +180,6 @@ impl SpaceViewContents {
         }
     }
 
-    /// Returns entity properties with the hierarchy applied.
-    pub fn data_blueprints_projected(&self) -> &EntityPropertyMap {
-        &self.data_blueprints.projected
-    }
-
-    /// Returns mutable individual entity properties, the hierarchy was not applied to this.
-    pub fn data_blueprints_individual(&mut self) -> &mut EntityPropertyMap {
-        &mut self.data_blueprints.individual
-    }
-
     pub fn contains_entity(&self, path: &EntityPath) -> bool {
         // If an entity is in path_to_group it is *likely* also an entity in the Space View.
         // However, it could be that the path *only* refers to a group, not also an entity.
@@ -250,46 +224,6 @@ impl SpaceViewContents {
         true
     }
 
-    /// Should be called on frame start.
-    ///
-    /// Propagates any data blueprint changes along the tree.
-    pub fn propagate_individual_to_tree(&mut self) {
-        re_tracing::profile_function!();
-
-        // NOTE: We could do this projection only when the entity properties changes
-        // and/or when new entity paths are added, but such memoization would add complexity.
-
-        fn project_tree(
-            tree: &mut SpaceViewContents,
-            parent_properties: &EntityProperties,
-            group_handle: DataBlueprintGroupHandle,
-        ) {
-            let Some(group) = tree.groups.get_mut(group_handle) else {
-                debug_assert!(false, "Invalid group handle in blueprint group tree");
-                return;
-            };
-
-            let group_properties_projected =
-                parent_properties.with_child(&group.properties_individual);
-            group.properties_projected = group_properties_projected.clone();
-
-            for entity_path in &group.entities {
-                let projected_properties = group_properties_projected
-                    .with_child(&tree.data_blueprints.individual.get(entity_path));
-                tree.data_blueprints
-                    .projected
-                    .set(entity_path.clone(), projected_properties);
-            }
-
-            let children = group.children.clone(); // TODO(andreas): How to avoid this clone?
-            for child in &children {
-                project_tree(tree, &group_properties_projected, *child);
-            }
-        }
-
-        project_tree(self, &EntityProperties::default(), self.root_group_handle);
-    }
-
     /// Adds a list of entity paths to the tree, using grouping as dictated by their entity path hierarchy.
     ///
     /// `base_path` indicates a path at which we short-circuit to the root group.
@@ -316,6 +250,7 @@ impl SpaceViewContents {
                 // Otherwise, create a new group which only contains this entity and add the group to the hierarchy.
                 let new_group = self.groups.insert(DataBlueprintGroup {
                     display_name: path_to_group_name(path),
+                    group_path: path.clone(),
                     ..Default::default()
                 });
                 self.add_group_to_hierarchy_recursively(new_group, path, base_path);
@@ -384,6 +319,7 @@ impl SpaceViewContents {
                 let parent_group = self.groups.insert(DataBlueprintGroup {
                     display_name: path_to_group_name(&parent_path),
                     children: smallvec![new_group],
+                    group_path: parent_path.clone(),
                     ..Default::default()
                 });
                 vacant_mapping.insert(parent_group);
@@ -496,8 +432,201 @@ impl SpaceViewContents {
             }
         }
     }
+
+    #[inline]
+    pub fn entity_path(&self) -> EntityPath {
+        self.space_view_id.as_entity_path()
+    }
+
+    /// Find all `ViewParts` that this [`SpaceViewContents`] thinks are relevant for the given entity path.
+    // TODO(jleibs): This inversion of data-structure is not great, but I believe this goes away as we
+    // implement a more direct heuristic evaluation in the future.
+    pub fn view_parts_for_entity_path(
+        &self,
+        entity_path: &EntityPath,
+    ) -> SmallVec<[ViewSystemName; 4]> {
+        re_tracing::profile_function!();
+        self.per_system_entities()
+            .iter()
+            .filter_map(|(part, ents)| {
+                if ents.contains(entity_path) {
+                    Some(*part)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 fn path_to_group_name(path: &EntityPath) -> String {
     path.iter().last().map_or("/".to_owned(), |c| c.to_string())
 }
+
+// ----------------------------------------------------------------------------
+// Implement the `DataQuery` interface for `SpaceViewContents`
+
+impl DataQuery for SpaceViewContents {
+    fn execute_query(
+        &self,
+        property_resolver: &impl PropertyResolver,
+        ctx: &StoreContext<'_>,
+        _entities_per_system_per_class: &EntitiesPerSystemPerClass,
+    ) -> DataResultTree {
+        re_tracing::profile_function!();
+        let root_override = property_resolver.resolve_root_override(ctx);
+        let entity_overrides = property_resolver.resolve_entity_overrides(ctx);
+        let mut data_results = SlotMap::<DataResultHandle, DataResultNode>::default();
+        let root_handle = Some(self.root_group().add_to_data_results_recursive(
+            self,
+            &entity_overrides,
+            None,
+            &root_override,
+            &mut data_results,
+        ));
+        DataResultTree {
+            data_results,
+            root_handle,
+        }
+    }
+
+    fn resolve(
+        &self,
+        property_resolver: &impl PropertyResolver,
+        ctx: &StoreContext<'_>,
+        _entities_per_system_per_class: &EntitiesPerSystemPerClass,
+        entity_path: &EntityPath,
+    ) -> DataResult {
+        re_tracing::profile_function!();
+        let entity_overrides = property_resolver.resolve_entity_overrides(ctx);
+
+        let view_parts = self
+            .per_system_entities()
+            .iter()
+            .filter_map(|(part, ents)| {
+                if ents.contains(entity_path) {
+                    Some(*part)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut resolved_properties = property_resolver.resolve_root_override(ctx);
+        for prefix in EntityPath::incremental_walk(None, entity_path) {
+            resolved_properties = resolved_properties.with_child(&entity_overrides.get(&prefix));
+        }
+
+        DataResult {
+            entity_path: entity_path.clone(),
+            view_parts,
+            is_group: false,
+            resolved_properties,
+            individual_properties: entity_overrides.get_opt(entity_path).cloned(),
+            override_path: self
+                .entity_path()
+                .join(&SpaceViewContents::PROPERTIES_PREFIX.into())
+                .join(entity_path),
+        }
+    }
+}
+
+impl DataBlueprintGroup {
+    /// This recursively walks a `DataBlueprintGroup` and adds every entity / group to the tree.
+    ///
+    /// Properties are resolved hierarchically from an [`EntityPropertyMap`] containing all the
+    /// overrides. As we walk down the tree.
+    fn add_to_data_results_recursive(
+        &self,
+        contents: &SpaceViewContents,
+        overrides: &EntityPropertyMap,
+        inherited_base: Option<&EntityPath>,
+        inherited: &EntityProperties,
+        data_results: &mut SlotMap<DataResultHandle, DataResultNode>,
+    ) -> DataResultHandle {
+        let group_path = self.group_path.clone();
+
+        // TODO(jleibs): This remapping isn't great when a view has a bunch of entity-types.
+        let group_view_parts = contents.view_parts_for_entity_path(&group_path);
+
+        let mut group_resolved_properties = inherited.clone();
+
+        for prefix in EntityPath::incremental_walk(inherited_base, &group_path) {
+            if let Some(props) = overrides.get_opt(&prefix) {
+                group_resolved_properties = group_resolved_properties.with_child(props);
+            }
+        }
+
+        let base_entity_path = contents.entity_path();
+        let props_path = EntityPath::from(SpaceViewContents::PROPERTIES_PREFIX);
+
+        let group_override_path = base_entity_path.join(&props_path).join(&group_path);
+
+        // First build up the direct children
+        let mut children: SmallVec<_> = self
+            .entities
+            .iter()
+            .cloned()
+            .map(|entity_path| {
+                let view_parts = contents.view_parts_for_entity_path(&entity_path);
+
+                let mut resolved_properties = group_resolved_properties.clone();
+
+                for prefix in EntityPath::incremental_walk(inherited_base, &entity_path) {
+                    if let Some(props) = overrides.get_opt(&prefix) {
+                        resolved_properties = resolved_properties.with_child(props);
+                    }
+                }
+
+                let individual_properties = overrides.get_opt(&entity_path).cloned();
+                let override_path = base_entity_path.join(&props_path).join(&entity_path);
+
+                data_results.insert(DataResultNode {
+                    data_result: DataResult {
+                        entity_path,
+                        view_parts,
+                        is_group: false,
+                        individual_properties,
+                        resolved_properties,
+                        override_path,
+                    },
+                    children: Default::default(),
+                })
+            })
+            .collect();
+
+        // And then append the recursive children
+        let mut recursive_children: SmallVec<[DataResultHandle; 4]> = self
+            .children
+            .iter()
+            .filter_map(|handle| {
+                contents.group(*handle).map(|group| {
+                    group.add_to_data_results_recursive(
+                        contents,
+                        overrides,
+                        inherited_base,
+                        inherited,
+                        data_results,
+                    )
+                })
+            })
+            .collect();
+
+        children.append(&mut recursive_children);
+
+        let individual_properties = overrides.get_opt(&group_path).cloned();
+        data_results.insert(DataResultNode {
+            data_result: DataResult {
+                entity_path: group_path,
+                view_parts: group_view_parts,
+                is_group: true,
+                individual_properties,
+                resolved_properties: group_resolved_properties,
+                override_path: group_override_path,
+            },
+            children,
+        })
+    }
+}
+
+// ----------------------------------------------------------------------------

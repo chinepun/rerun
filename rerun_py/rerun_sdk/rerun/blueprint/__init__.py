@@ -9,7 +9,21 @@ from .auto_space_views import (
     AutoSpaceViewsLike,
     AutoSpaceViewsType,
 )
+from .entity_properties_component import (
+    EntityPropertiesComponent,
+    EntityPropertiesComponentArrayLike,
+    EntityPropertiesComponentBatch,
+    EntityPropertiesComponentLike,
+    EntityPropertiesComponentType,
+)
 from .panel_view import PanelView, PanelViewArrayLike, PanelViewBatch, PanelViewLike, PanelViewType
+from .query_expressions import (
+    QueryExpressions,
+    QueryExpressionsArrayLike,
+    QueryExpressionsBatch,
+    QueryExpressionsLike,
+    QueryExpressionsType,
+)
 from .space_view_component import (
     SpaceViewComponent,
     SpaceViewComponentArrayLike,
@@ -38,11 +52,21 @@ __all__ = [
     "AutoSpaceViewsBatch",
     "AutoSpaceViewsLike",
     "AutoSpaceViewsType",
+    "EntityPropertiesComponent",
+    "EntityPropertiesComponentArrayLike",
+    "EntityPropertiesComponentBatch",
+    "EntityPropertiesComponentLike",
+    "EntityPropertiesComponentType",
     "PanelView",
     "PanelViewArrayLike",
     "PanelViewBatch",
     "PanelViewLike",
     "PanelViewType",
+    "QueryExpressions",
+    "QueryExpressionsArrayLike",
+    "QueryExpressionsBatch",
+    "QueryExpressionsLike",
+    "QueryExpressionsType",
     "SpaceViewComponent",
     "SpaceViewComponentArrayLike",
     "SpaceViewComponentBatch",
