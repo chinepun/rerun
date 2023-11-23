@@ -11,34 +11,35 @@ namespace rerun::archetypes {
 
 namespace rerun {
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Asset3D>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Asset3D>::serialize(
         const archetypes::Asset3D& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(3);
+        std::vector<DataCell> cells;
+        cells.reserve(4);
 
         {
-            auto result = Collection<rerun::components::Blob>(archetype.blob).serialize();
+            auto result = rerun::components::Blob::to_data_cell(&archetype.blob, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.media_type.has_value()) {
             auto result =
-                Collection<rerun::components::MediaType>(archetype.media_type.value()).serialize();
+                rerun::components::MediaType::to_data_cell(&archetype.media_type.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.transform.has_value()) {
-            auto result =
-                Collection<rerun::components::OutOfTreeTransform3D>(archetype.transform.value())
-                    .serialize();
+            auto result = rerun::components::OutOfTreeTransform3D::to_data_cell(
+                &archetype.transform.value(),
+                1
+            );
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                Collection<Asset3D::IndicatorComponent>(Asset3D::IndicatorComponent()).serialize();
+            auto indicator = Asset3D::IndicatorComponent();
+            auto result = Asset3D::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

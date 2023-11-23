@@ -133,8 +133,6 @@ namespace rerun {
     template <>
     struct AsComponents<archetypes::AffixFuzzer2> {
         /// Serialize all set component batches.
-        static Result<std::vector<SerializedComponentBatch>> serialize(
-            const archetypes::AffixFuzzer2& archetype
-        );
+        static Result<std::vector<DataCell>> serialize(const archetypes::AffixFuzzer2& archetype);
     };
 } // namespace rerun

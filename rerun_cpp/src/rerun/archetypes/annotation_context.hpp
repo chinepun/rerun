@@ -93,7 +93,7 @@ namespace rerun {
     template <>
     struct AsComponents<archetypes::AnnotationContext> {
         /// Serialize all set component batches.
-        static Result<std::vector<SerializedComponentBatch>> serialize(
+        static Result<std::vector<DataCell>> serialize(
             const archetypes::AnnotationContext& archetype
         );
     };

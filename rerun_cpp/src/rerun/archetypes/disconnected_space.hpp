@@ -74,7 +74,7 @@ namespace rerun {
     template <>
     struct AsComponents<archetypes::DisconnectedSpace> {
         /// Serialize all set component batches.
-        static Result<std::vector<SerializedComponentBatch>> serialize(
+        static Result<std::vector<DataCell>> serialize(
             const archetypes::DisconnectedSpace& archetype
         );
     };

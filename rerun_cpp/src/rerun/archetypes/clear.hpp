@@ -111,8 +111,6 @@ namespace rerun {
     template <>
     struct AsComponents<archetypes::Clear> {
         /// Serialize all set component batches.
-        static Result<std::vector<SerializedComponentBatch>> serialize(
-            const archetypes::Clear& archetype
-        );
+        static Result<std::vector<DataCell>> serialize(const archetypes::Clear& archetype);
     };
 } // namespace rerun

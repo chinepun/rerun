@@ -3,16 +3,15 @@
 
 #pragma once
 
+#include "../collection.hpp"
 #include "../result.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <utility>
-#include <vector>
 
 namespace arrow {
     class DataType;
-    class MemoryPool;
     class StructBuilder;
 } // namespace arrow
 
@@ -21,25 +20,21 @@ namespace rerun::blueprint {
     ///
     /// Unstable. Used for the ongoing blueprint experimentations.
     struct SpaceViewComponent {
-        std::vector<uint8_t> space_view;
+        rerun::Collection<uint8_t> space_view;
 
       public:
         SpaceViewComponent() = default;
 
-        SpaceViewComponent(std::vector<uint8_t> space_view_) : space_view(std::move(space_view_)) {}
+        SpaceViewComponent(rerun::Collection<uint8_t> space_view_)
+            : space_view(std::move(space_view_)) {}
 
-        SpaceViewComponent& operator=(std::vector<uint8_t> space_view_) {
+        SpaceViewComponent& operator=(rerun::Collection<uint8_t> space_view_) {
             space_view = std::move(space_view_);
             return *this;
         }
 
         /// Returns the arrow data type this type corresponds to.
         static const std::shared_ptr<arrow::DataType>& arrow_datatype();
-
-        /// Creates a new array builder with an array of this type.
-        static Result<std::shared_ptr<arrow::StructBuilder>> new_arrow_array_builder(
-            arrow::MemoryPool* memory_pool
-        );
 
         /// Fills an arrow array builder with an array of this type.
         static rerun::Error fill_arrow_array_builder(
