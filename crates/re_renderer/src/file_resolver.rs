@@ -178,15 +178,15 @@
 // `#import <my_shader>` which works with "my_shader.wgsl"
 
 use std::{
+    convert::Infallible,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
 use ahash::{HashMap, HashSet, HashSetExt};
-use anyhow::{anyhow, bail, ensure, Context as _};
 use clean_path::Clean as _;
 
-use crate::FileSystem;
+use crate::{file_system::FileSystemError, FileSystem};
 
 // ---
 
@@ -231,7 +231,7 @@ impl SearchPath {
 }
 
 impl std::str::FromStr for SearchPath {
-    type Err = anyhow::Error;
+    type Err = FileResolverError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Using implicit Vec<Result<_>> -> Result<Vec<_>> collection.
@@ -240,7 +240,7 @@ impl std::str::FromStr for SearchPath {
             .filter(|s| !s.is_empty())
             .map(|s| {
                 s.parse()
-                    .with_context(|| format!("couldn't parse {s:?} as PathBuf"))
+                    .map_or_else(|err| Err(FileResolverError::CannotParseAsPathBuf(err)), Ok)
             })
             .collect();
 
@@ -277,6 +277,33 @@ pub struct ImportClause {
     path: PathBuf,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum FileResolverError {
+    #[error("import clause must start with {prefix:?}, got {string:?}")]
+    ImportClauseWrongPrefixError { prefix: String, string: String },
+
+    #[error("import clause must contain a non-empty path")]
+    ImportClauseMustContainsNonEmptyPathError,
+
+    #[error("couldn't parse {0:?} as PathBuf")]
+    CannotParseAsPathBuf(#[from] Infallible),
+
+    #[error("misformatted import clause: {clause_str:?}")]
+    MisformattedImportClause { clause_str: String },
+
+    #[error("import cycle detected: {path_stack:?}")]
+    ImportCycleDetected { path_stack: Vec<PathBuf> },
+
+    #[error("couldn't resolve import clause path at {path:?}")]
+    CannotResolveImportPath { path: PathBuf },
+
+    #[error("couldn't resolve shader module's contents")]
+    CannotResolveShaderModules,
+
+    #[error(transparent)]
+    ReadError(#[from] FileSystemError),
+}
+
 impl ImportClause {
     pub const PREFIX: &str = "#import ";
 }
@@ -288,16 +315,18 @@ impl<P: Into<PathBuf>> From<P> for ImportClause {
 }
 
 impl std::str::FromStr for ImportClause {
-    type Err = anyhow::Error;
+    type Err = FileResolverError;
 
     fn from_str(clause_str: &str) -> Result<Self, Self::Err> {
         let s = clause_str.trim();
 
-        ensure!(
-            s.starts_with(ImportClause::PREFIX),
-            "import clause must start with {prefix:?}, got {s:?}",
-            prefix = ImportClause::PREFIX,
-        );
+        if !s.starts_with(ImportClause::PREFIX) {
+            return Err(FileResolverError::ImportClauseWrongPrefixError {
+                prefix: ImportClause::PREFIX.to_owned(),
+                string: s.to_owned(),
+            });
+        }
+
         let s = s.trim_start_matches(ImportClause::PREFIX).trim();
 
         let rs = s.chars().rev().collect::<String>();
@@ -308,15 +337,20 @@ impl std::str::FromStr for ImportClause {
 
         if let Some((i0, i1)) = splits {
             let s = &s[i0..i1];
-            ensure!(!s.is_empty(), "import clause must contain a non-empty path");
 
-            return s
-                .parse()
-                .with_context(|| "couldn't parse {s:?} as PathBuf")
-                .map(|path| Self { path });
+            if s.is_empty() {
+                return Err(FileResolverError::ImportClauseMustContainsNonEmptyPathError);
+            };
+
+            return s.parse().map_or_else(
+                |err| Err(FileResolverError::CannotParseAsPathBuf(err)),
+                |path| Ok(Self { path }),
+            );
         }
 
-        bail!("misformatted import clause: {clause_str:?}")
+        Err(FileResolverError::MisformattedImportClause {
+            clause_str: clause_str.to_owned(),
+        })
     }
 }
 
@@ -504,7 +538,10 @@ impl<Fs: FileSystem> FileResolver<Fs> {
 }
 
 impl<Fs: FileSystem> FileResolver<Fs> {
-    pub fn populate(&mut self, path: impl AsRef<Path>) -> anyhow::Result<InterpolatedFile> {
+    pub fn populate(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<InterpolatedFile, FileResolverError> {
         re_tracing::profile_function!();
 
         fn populate_rec<Fs: FileSystem>(
@@ -513,15 +550,16 @@ impl<Fs: FileSystem> FileResolver<Fs> {
             interp_files: &mut HashMap<PathBuf, Rc<InterpolatedFile>>,
             path_stack: &mut Vec<PathBuf>,
             visited_stack: &mut HashSet<PathBuf>,
-        ) -> anyhow::Result<Rc<InterpolatedFile>> {
+        ) -> Result<Rc<InterpolatedFile>, FileResolverError> {
             let path = path.as_ref().clean();
 
             // Cycle detection
             path_stack.push(path.clone());
-            ensure!(
-                visited_stack.insert(path.clone()),
-                "import cycle detected: {path_stack:?}"
-            );
+            if !visited_stack.insert(path.clone()) {
+                return Err(FileResolverError::ImportCycleDetected {
+                    path_stack: path_stack.clone(),
+                });
+            };
 
             // #pragma once
             if interp_files.contains_key(&path) {
@@ -543,10 +581,9 @@ impl<Fs: FileSystem> FileResolver<Fs> {
                         let clause = line.parse::<ImportClause>()?;
                         // We do not use `Path::parent` on purpose!
                         let cwd = path.join("..").clean();
-                        let clause_path =
-                            this.resolve_clause_path(cwd, &clause.path).ok_or_else(|| {
-                                anyhow!("couldn't resolve import clause path at {:?}", clause.path)
-                            })?;
+                        let clause_path = this.resolve_clause_path(cwd, &clause.path).ok_or({
+                            FileResolverError::CannotResolveImportPath { path: clause.path }
+                        })?;
                         imports.insert(clause_path.clone());
                         populate_rec(this, clause_path, interp_files, path_stack, visited_stack)
                     } else {
@@ -814,7 +851,7 @@ mod tests_file_resolver {
 
         resolver
             .populate("/shaders2/shader1.wgsl")
-            .map_err(re_error::format)
+            // .map_err(re_error::format)
             .unwrap();
     }
 
@@ -866,7 +903,7 @@ mod tests_file_resolver {
 
         resolver
             .populate("/shaders3/shader1.wgsl")
-            .map_err(re_error::format)
+            // .map_err(re_error::format)
             .unwrap();
     }
 }

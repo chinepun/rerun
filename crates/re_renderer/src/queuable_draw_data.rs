@@ -14,6 +14,9 @@ pub enum QueueableDrawDataError {
 
     #[error("Mismatching draw data type, expected {0}")]
     UnexpectedDrawDataType(&'static str),
+
+    #[error("draw call during phase {phase:?}")]
+    PhaseError{ phase: DrawPhase },
 }
 
 type DrawFn = dyn for<'a, 'b> Fn(

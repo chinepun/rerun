@@ -1,4 +1,3 @@
-use anyhow::Context;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -10,7 +9,7 @@ use crate::{
         ScreenshotProcessor,
     },
     global_bindings::FrameUniformBuffer,
-    queuable_draw_data::QueueableDrawData,
+    queuable_draw_data::{QueueableDrawData, QueueableDrawDataError},
     renderer::{CompositorDrawData, DebugOverlayDrawData},
     transform::RectTransform,
     wgpu_resources::{GpuBindGroup, GpuTexture, PoolError, TextureDesc},
@@ -509,7 +508,8 @@ impl ViewBuilder {
         for queued_draw in &self.queued_draws {
             if queued_draw.participated_phases.contains(&phase) {
                 let res = (queued_draw.draw_func)(ctx, phase, pass, queued_draw.draw_data.as_ref())
-                    .with_context(|| format!("draw call during phase {phase:?}"));
+                    .map_err(|_a| QueueableDrawDataError::PhaseError { phase });
+
                 if let Err(err) = res {
                     re_log::error!(renderer=%queued_draw.renderer_name, %err,
                         "renderer failed to draw");
