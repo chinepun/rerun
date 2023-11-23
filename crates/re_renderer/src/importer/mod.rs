@@ -5,8 +5,42 @@ pub mod obj;
 pub mod gltf;
 
 use macaw::Vec3Ext as _;
+use tobj::LoadError;
 
-use crate::renderer::MeshInstance;
+use crate::{mesh::MeshError, renderer::MeshInstance, resource_managers::ResourceManagerError};
+
+#[derive(thiserror::Error, Debug)]
+pub enum ImporterError {
+    #[error("failed loading obj")]
+    ObjLoadingFailed(#[from] LoadError),
+
+    #[error(transparent)]
+    CannotCreateResource(#[from] ResourceManagerError),
+
+    #[error(transparent)]
+    WrongMesh(#[from] MeshError),
+
+    #[error(transparent)]
+    SliceFromImportError(#[from] gltf::GltfErr),
+
+    #[error("Unsupported texture format {format:?}")]
+    UnsupportedTextureFormat { format: gltf::GltfFormat },
+
+    #[error("Gltf primitives must have indices")]
+    MissingGltfIndices,
+
+    #[error("Gltf primitives must have positions")]
+    MissingGltfPositions,
+
+    #[error("Only a single set of texture coordinates is supported")]
+    TexCoordNotSupported,
+
+    #[error("empty mesh")]
+    EmptyMesh,
+
+    #[error("mesh {} (name {:?})", index, name)]
+    UnabletoReMesh { index: usize, name: String },
+}
 
 pub fn to_uniform_scale(scale: glam::Vec3) -> f32 {
     if scale.has_equal_components(0.001) {

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use smallvec::smallvec;
 
 use crate::{
+    importer::ImporterError,
     mesh::{Material, Mesh},
     renderer::MeshInstance,
     resource_managers::ResourceLifeTime,
@@ -16,7 +16,7 @@ pub fn load_obj_from_buffer(
     buffer: &[u8],
     lifetime: ResourceLifeTime,
     ctx: &RenderContext,
-) -> anyhow::Result<Vec<MeshInstance>> {
+) -> Result<Vec<MeshInstance>, ImporterError> {
     re_tracing::profile_function!();
 
     let (models, _materials) = tobj::load_obj_buf(
@@ -27,8 +27,7 @@ pub fn load_obj_from_buffer(
             ..Default::default()
         },
         |_material_path| Err(tobj::LoadError::MaterialParseError),
-    )
-    .context("failed loading obj")?;
+    )?;
 
     // TODO(andreas) Merge all obj meshes into a single re_renderer mesh with multiple materials.
     models
