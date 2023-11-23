@@ -184,7 +184,6 @@ use std::{
 };
 
 use ahash::{HashMap, HashSet, HashSetExt};
-use anyhow::{anyhow, ensure};
 use clean_path::Clean as _;
 
 use crate::{file_system::FileSystemError, FileSystem};
