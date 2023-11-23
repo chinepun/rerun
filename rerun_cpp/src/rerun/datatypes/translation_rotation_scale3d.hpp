@@ -3,8 +3,8 @@
 
 #pragma once
 
+#include "../compiler_utils.hpp"
 #include "../result.hpp"
-#include "../warning_macros.hpp"
 #include "rotation3d.hpp"
 #include "scale3d.hpp"
 #include "vec3d.hpp"
@@ -15,7 +15,6 @@
 
 namespace arrow {
     class DataType;
-    class MemoryPool;
     class StructBuilder;
 } // namespace arrow
 
@@ -50,14 +49,14 @@ namespace rerun::datatypes {
         // of union-types datatypes inside of an optional component.
         //
         // See: https://github.com/rerun-io/rerun/issues/4027
-        DISABLE_MAYBE_UNINITIALIZED_PUSH
+        RERUN_DISABLE_MAYBE_UNINITIALIZED_PUSH
         TranslationRotationScale3D(const TranslationRotationScale3D& other)
             : translation(other.translation),
               rotation(other.rotation),
               scale(other.scale),
               from_parent(other.from_parent) {}
 
-        DISABLE_MAYBE_UNINITIALIZED_POP
+        RERUN_DISABLE_MAYBE_UNINITIALIZED_POP
 
         /// Creates a new 3D transform from translation/rotation/scale.
         ///
@@ -198,11 +197,6 @@ namespace rerun::datatypes {
 
         /// Returns the arrow data type this type corresponds to.
         static const std::shared_ptr<arrow::DataType>& arrow_datatype();
-
-        /// Creates a new array builder with an array of this type.
-        static Result<std::shared_ptr<arrow::StructBuilder>> new_arrow_array_builder(
-            arrow::MemoryPool* memory_pool
-        );
 
         /// Fills an arrow array builder with an array of this type.
         static rerun::Error fill_arrow_array_builder(

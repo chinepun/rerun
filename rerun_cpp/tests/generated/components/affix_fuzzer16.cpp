@@ -18,19 +18,6 @@ namespace rerun::components {
         return datatype;
     }
 
-    Result<std::shared_ptr<arrow::ListBuilder>> AffixFuzzer16::new_arrow_array_builder(
-        arrow::MemoryPool* memory_pool
-    ) {
-        if (memory_pool == nullptr) {
-            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
-        }
-
-        return Result(std::make_shared<arrow::ListBuilder>(
-            memory_pool,
-            rerun::datatypes::AffixFuzzer3::new_arrow_array_builder(memory_pool).value
-        ));
-    }
-
     rerun::Error AffixFuzzer16::fill_arrow_array_builder(
         arrow::ListBuilder* builder, const AffixFuzzer16* elements, size_t num_elements
     ) {
@@ -68,22 +55,27 @@ namespace rerun::components {
     ) {
         // TODO(andreas): Allow configuring the memory pool.
         arrow::MemoryPool* pool = arrow::default_memory_pool();
+        auto datatype = arrow_datatype();
 
-        auto builder_result = AffixFuzzer16::new_arrow_array_builder(pool);
-        RR_RETURN_NOT_OK(builder_result.error);
-        auto builder = std::move(builder_result.value);
+        ARROW_ASSIGN_OR_RAISE(auto builder, arrow::MakeBuilder(datatype, pool))
         if (instances && num_instances > 0) {
-            RR_RETURN_NOT_OK(
-                AffixFuzzer16::fill_arrow_array_builder(builder.get(), instances, num_instances)
-            );
+            RR_RETURN_NOT_OK(AffixFuzzer16::fill_arrow_array_builder(
+                static_cast<arrow::ListBuilder*>(builder.get()),
+                instances,
+                num_instances
+            ));
         }
         std::shared_ptr<arrow::Array> array;
         ARROW_RETURN_NOT_OK(builder->Finish(&array));
 
-        return rerun::DataCell::create(
-            AffixFuzzer16::NAME,
-            AffixFuzzer16::arrow_datatype(),
-            std::move(array)
-        );
+        static const Result<ComponentTypeHandle> component_type =
+            ComponentType(NAME, datatype).register_component();
+        RR_RETURN_NOT_OK(component_type.error);
+
+        DataCell cell;
+        cell.num_instances = num_instances;
+        cell.array = std::move(array);
+        cell.component_type = component_type.value;
+        return cell;
     }
 } // namespace rerun::components

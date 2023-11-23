@@ -10,14 +10,13 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <rerun/collection.hpp>
 #include <rerun/result.hpp>
 #include <utility>
-#include <vector>
 
 namespace arrow {
     class DataType;
     class DenseUnionBuilder;
-    class MemoryPool;
 } // namespace arrow
 
 namespace rerun::datatypes {
@@ -35,9 +34,9 @@ namespace rerun::datatypes {
         union AffixFuzzer4Data {
             rerun::datatypes::AffixFuzzer3 single_required;
 
-            std::vector<rerun::datatypes::AffixFuzzer3> many_required;
+            rerun::Collection<rerun::datatypes::AffixFuzzer3> many_required;
 
-            std::optional<std::vector<rerun::datatypes::AffixFuzzer3>> many_optional;
+            std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>> many_optional;
 
             AffixFuzzer4Data() {
                 std::memset(reinterpret_cast<void*>(this), 0, sizeof(AffixFuzzer4Data));
@@ -68,11 +67,12 @@ namespace rerun::datatypes {
                     new (&_data.single_required) TypeAlias(other._data.single_required);
                 } break;
                 case detail::AffixFuzzer4Tag::many_required: {
-                    using TypeAlias = std::vector<rerun::datatypes::AffixFuzzer3>;
+                    using TypeAlias = rerun::Collection<rerun::datatypes::AffixFuzzer3>;
                     new (&_data.many_required) TypeAlias(other._data.many_required);
                 } break;
                 case detail::AffixFuzzer4Tag::many_optional: {
-                    using TypeAlias = std::optional<std::vector<rerun::datatypes::AffixFuzzer3>>;
+                    using TypeAlias =
+                        std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>>;
                     new (&_data.many_optional) TypeAlias(other._data.many_optional);
                 } break;
                 case detail::AffixFuzzer4Tag::None: {
@@ -105,11 +105,12 @@ namespace rerun::datatypes {
                     _data.single_required.~TypeAlias();
                 } break;
                 case detail::AffixFuzzer4Tag::many_required: {
-                    using TypeAlias = std::vector<rerun::datatypes::AffixFuzzer3>;
+                    using TypeAlias = rerun::Collection<rerun::datatypes::AffixFuzzer3>;
                     _data.many_required.~TypeAlias();
                 } break;
                 case detail::AffixFuzzer4Tag::many_optional: {
-                    using TypeAlias = std::optional<std::vector<rerun::datatypes::AffixFuzzer3>>;
+                    using TypeAlias =
+                        std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>>;
                     _data.many_optional.~TypeAlias();
                 } break;
             }
@@ -128,22 +129,25 @@ namespace rerun::datatypes {
             return self;
         }
 
-        static AffixFuzzer4 many_required(std::vector<rerun::datatypes::AffixFuzzer3> many_required
+        static AffixFuzzer4 many_required(
+            rerun::Collection<rerun::datatypes::AffixFuzzer3> many_required
         ) {
             AffixFuzzer4 self;
             self._tag = detail::AffixFuzzer4Tag::many_required;
             new (&self._data.many_required)
-                std::vector<rerun::datatypes::AffixFuzzer3>(std::move(many_required));
+                rerun::Collection<rerun::datatypes::AffixFuzzer3>(std::move(many_required));
             return self;
         }
 
         static AffixFuzzer4 many_optional(
-            std::optional<std::vector<rerun::datatypes::AffixFuzzer3>> many_optional
+            std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>> many_optional
         ) {
             AffixFuzzer4 self;
             self._tag = detail::AffixFuzzer4Tag::many_optional;
-            new (&self._data.many_optional
-            ) std::optional<std::vector<rerun::datatypes::AffixFuzzer3>>(std::move(many_optional));
+            new (&self._data.many_optional)
+                std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>>(
+                    std::move(many_optional)
+                );
             return self;
         }
 
@@ -157,7 +161,7 @@ namespace rerun::datatypes {
         }
 
         /// Return a pointer to many_required if the union is in that state, otherwise `nullptr`.
-        const std::vector<rerun::datatypes::AffixFuzzer3>* get_many_required() const {
+        const rerun::Collection<rerun::datatypes::AffixFuzzer3>* get_many_required() const {
             if (_tag == detail::AffixFuzzer4Tag::many_required) {
                 return &_data.many_required;
             } else {
@@ -166,7 +170,7 @@ namespace rerun::datatypes {
         }
 
         /// Return a pointer to many_optional if the union is in that state, otherwise `nullptr`.
-        const std::optional<std::vector<rerun::datatypes::AffixFuzzer3>>* get_many_optional(
+        const std::optional<rerun::Collection<rerun::datatypes::AffixFuzzer3>>* get_many_optional(
         ) const {
             if (_tag == detail::AffixFuzzer4Tag::many_optional) {
                 return &_data.many_optional;
@@ -177,11 +181,6 @@ namespace rerun::datatypes {
 
         /// Returns the arrow data type this type corresponds to.
         static const std::shared_ptr<arrow::DataType>& arrow_datatype();
-
-        /// Creates a new array builder with an array of this type.
-        static Result<std::shared_ptr<arrow::DenseUnionBuilder>> new_arrow_array_builder(
-            arrow::MemoryPool* memory_pool
-        );
 
         /// Fills an arrow array builder with an array of this type.
         static rerun::Error fill_arrow_array_builder(
