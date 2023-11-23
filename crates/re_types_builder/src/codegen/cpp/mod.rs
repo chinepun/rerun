@@ -15,10 +15,7 @@ use crate::{
     ObjectSpecifics, Objects, Reporter, Type, ATTR_CPP_NO_FIELD_CTORS,
 };
 
-use self::array_builder::{
-    arrow_array_builder_type, arrow_array_builder_type_object,
-    quote_arrow_array_builder_type_instantiation,
-};
+use self::array_builder::{arrow_array_builder_type, arrow_array_builder_type_object};
 use self::forward_decl::{ForwardDecl, ForwardDecls};
 use self::includes::Includes;
 use self::method::{Method, MethodDeclaration};
@@ -416,7 +413,7 @@ impl QuotedObject {
             let method_ident = format_ident!("with_{}", obj_field.name);
             let field_type = quote_archetype_field_type(&mut hpp_includes, obj_field);
 
-            hpp_includes.insert_rerun("warning_macros.hpp");
+            hpp_includes.insert_rerun("compiler_utils.hpp");
             let gcc_ignore_comment =
                 quote_comment("See: https://github.com/rerun-io/rerun/issues/4027");
 
@@ -433,7 +430,7 @@ impl QuotedObject {
                     #field_ident = std::move(#parameter_ident);
                     #NEWLINE_TOKEN
                     #gcc_ignore_comment
-                    WITH_MAYBE_UNINITIALIZED_DISABLED(return std::move(*this);)
+                    RERUN_WITH_MAYBE_UNINITIALIZED_DISABLED(return std::move(*this);)
                 },
                 inline: true,
             });
@@ -623,13 +620,6 @@ impl QuotedObject {
             &mut cpp_includes,
             &mut hpp_declarations,
         ));
-        methods.push(new_arrow_array_builder_method(
-            obj,
-            objects,
-            &mut hpp_includes,
-            &mut cpp_includes,
-            &mut hpp_declarations,
-        ));
         methods.push(fill_arrow_array_builder_method(
             obj,
             &type_ident,
@@ -641,6 +631,8 @@ impl QuotedObject {
         if obj.kind == ObjectKind::Component {
             methods.push(component_to_data_cell_method(
                 &type_ident,
+                obj,
+                objects,
                 &mut hpp_includes,
             ));
         }
@@ -838,13 +830,6 @@ impl QuotedObject {
         }
 
         methods.push(arrow_data_type_method(
-            obj,
-            objects,
-            &mut hpp_includes,
-            &mut cpp_includes,
-            &mut hpp_declarations,
-        ));
-        methods.push(new_arrow_array_builder_method(
             obj,
             objects,
             &mut hpp_includes,
@@ -1217,44 +1202,6 @@ fn arrow_data_type_method(
     }
 }
 
-fn new_arrow_array_builder_method(
-    obj: &Object,
-    objects: &Objects,
-    hpp_includes: &mut Includes,
-    cpp_includes: &mut Includes,
-    hpp_declarations: &mut ForwardDecls,
-) -> Method {
-    hpp_includes.insert_system("memory"); // std::shared_ptr
-    cpp_includes.insert_system("arrow/builder.h");
-    hpp_declarations.insert("arrow", ForwardDecl::Class(format_ident!("MemoryPool")));
-
-    let builder_instantiation = quote_arrow_array_builder_type_instantiation(
-        &Type::Object(obj.fqname.clone()),
-        objects,
-        cpp_includes,
-        true,
-    );
-    let arrow_builder_type = arrow_array_builder_type_object(obj, objects, hpp_declarations);
-
-    Method {
-        docs: "Creates a new array builder with an array of this type.".into(),
-        declaration: MethodDeclaration {
-            is_static: true,
-            return_type: quote! { Result<std::shared_ptr<arrow::#arrow_builder_type>> },
-            name_and_parameters: quote!(new_arrow_array_builder(arrow::MemoryPool * memory_pool)),
-        },
-        definition_body: quote! {
-            if (memory_pool == nullptr) {
-                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
-            }
-            #NEWLINE_TOKEN
-            #NEWLINE_TOKEN
-            return Result(#builder_instantiation);
-        },
-        inline: false,
-    }
-}
-
 fn fill_arrow_array_builder_method(
     obj: &Object,
     type_ident: &Ident,
@@ -1281,14 +1228,6 @@ fn fill_arrow_array_builder_method(
             },
         },
         definition_body: quote! {
-            if (builder == nullptr) {
-                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
-            }
-            if (elements == nullptr) {
-                return rerun::Error(ErrorCode::UnexpectedNullArgument, "Cannot serialize null pointer to arrow array.");
-            }
-            #NEWLINE_TOKEN
-            #NEWLINE_TOKEN
             #fill_builder
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
@@ -1298,12 +1237,21 @@ fn fill_arrow_array_builder_method(
     }
 }
 
-fn component_to_data_cell_method(type_ident: &Ident, hpp_includes: &mut Includes) -> Method {
+fn component_to_data_cell_method(
+    type_ident: &Ident,
+    obj: &Object,
+    objects: &Objects,
+    hpp_includes: &mut Includes,
+) -> Method {
     hpp_includes.insert_system("memory"); // std::shared_ptr
     hpp_includes.insert_rerun("data_cell.hpp");
     hpp_includes.insert_rerun("result.hpp");
 
     let todo_pool = quote_comment("TODO(andreas): Allow configuring the memory pool.");
+
+    // Only need this in the cpp file where we don't need to forward declare the arrow builder type.
+    let arrow_builder_type =
+        arrow_array_builder_type_object(obj, objects, &mut ForwardDecls::default());
 
     Method {
         docs: format!("Creates a Rerun DataCell from an array of {type_ident} components.").into(),
@@ -1318,14 +1266,13 @@ fn component_to_data_cell_method(type_ident: &Ident, hpp_includes: &mut Includes
             #NEWLINE_TOKEN
             #todo_pool
             arrow::MemoryPool* pool = arrow::default_memory_pool();
+            auto datatype = arrow_datatype();
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
-            auto builder_result = #type_ident::new_arrow_array_builder(pool);
-            RR_RETURN_NOT_OK(builder_result.error);
-            auto builder = std::move(builder_result.value);
+            ARROW_ASSIGN_OR_RAISE(auto builder, arrow::MakeBuilder(datatype, pool))
             if (instances && num_instances > 0) {
                 RR_RETURN_NOT_OK(#type_ident::fill_arrow_array_builder(
-                    builder.get(),
+                    static_cast<arrow::#arrow_builder_type*>(builder.get()),
                     instances,
                     num_instances
                 ));
@@ -1334,7 +1281,16 @@ fn component_to_data_cell_method(type_ident: &Ident, hpp_includes: &mut Includes
             ARROW_RETURN_NOT_OK(builder->Finish(&array));
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
-            return rerun::DataCell::create(#type_ident::NAME, #type_ident::arrow_datatype(), std::move(array));
+            // Lazily register component type.
+            static const Result<ComponentTypeHandle> component_type = ComponentType(NAME, datatype).register_component();
+            RR_RETURN_NOT_OK(component_type.error);
+            #NEWLINE_TOKEN
+            #NEWLINE_TOKEN
+            DataCell cell;
+            cell.num_instances = num_instances;
+            cell.array = std::move(array);
+            cell.component_type = component_type.value;
+            return cell;
         },
         inline: false,
     }
@@ -1343,41 +1299,56 @@ fn component_to_data_cell_method(type_ident: &Ident, hpp_includes: &mut Includes
 fn archetype_serialize(type_ident: &Ident, obj: &Object, hpp_includes: &mut Includes) -> Method {
     hpp_includes.insert_rerun("data_cell.hpp");
     hpp_includes.insert_rerun("collection.hpp");
+    hpp_includes.insert_rerun("data_cell.hpp");
     hpp_includes.insert_system("vector"); // std::vector
 
-    let num_fields = quote_integer(obj.fields.len());
+    let num_fields = quote_integer(obj.fields.len() + 1); // Plus one for the indicator.
     let push_batches = obj.fields.iter().map(|field| {
         let field_name = format_ident!("{}", field.name);
         let field_accessor = quote!(archetype.#field_name);
+        let field_type = quote_fqname_as_type_path(
+            hpp_includes,
+            field
+                .typ
+                .fqname()
+                .expect("Archetypes only have components and vectors of components."),
+        );
 
-        // TODO(andreas): Introducing MonoCollection will remove the need for this.
-        let wrapping_type = if field.typ.is_plural() {
-            quote!()
-        } else {
-            let field_type = quote_fqname_as_type_path(
-                hpp_includes,
-                field
-                    .typ
-                    .fqname()
-                    .expect("Archetypes only have components and vectors of components."),
-            );
-            quote!(Collection<#field_type>)
+        let emplace_back = quote! {
+            RR_RETURN_NOT_OK(result.error);
+            cells.emplace_back(std::move(result.value));
         };
 
-        if field.is_nullable {
+
+        // TODO(andreas): Introducing MonoCollection will remove the need for distinguishing these two cases.
+        if field.typ.is_plural() {
+            if field.is_nullable {
+                quote! {
+                    if (#field_accessor.has_value()) {
+                        auto result = #field_type::to_data_cell(#field_accessor.value().data(), #field_accessor.value().size());
+                        #emplace_back
+                    }
+                }
+            } else {
+                quote! {
+                    {
+                        auto result = #field_type::to_data_cell(#field_accessor.data(), #field_accessor.size());
+                        #emplace_back
+                    }
+                }
+            }
+        } else if field.is_nullable {
             quote! {
                 if (#field_accessor.has_value()) {
-                    auto result = #wrapping_type(#field_accessor.value()).serialize();
-                    RR_RETURN_NOT_OK(result.error);
-                    cells.emplace_back(std::move(result.value));
+                    auto result = #field_type::to_data_cell(&#field_accessor.value(), 1);
+                    #emplace_back
                 }
             }
         } else {
             quote! {
                 {
-                    auto result = #wrapping_type(#field_accessor).serialize();
-                    RR_RETURN_NOT_OK(result.error);
-                    cells.emplace_back(std::move(result.value));
+                    auto result = #field_type::to_data_cell(&#field_accessor, 1);
+                    #emplace_back
                 }
             }
         }
@@ -1387,19 +1358,21 @@ fn archetype_serialize(type_ident: &Ident, obj: &Object, hpp_includes: &mut Incl
         docs: "Serialize all set component batches.".into(),
         declaration: MethodDeclaration {
             is_static: true,
-            return_type: quote!(Result<std::vector<SerializedComponentBatch>>),
+            // TODO(andreas): Use a rerun::Collection here as well.
+            return_type: quote!(Result<std::vector<DataCell>>),
             name_and_parameters: quote!(serialize(const archetypes::#type_ident& archetype)),
         },
         definition_body: quote! {
             using namespace archetypes;
             #NEWLINE_TOKEN
-            std::vector<SerializedComponentBatch> cells;
+            std::vector<DataCell> cells;
             cells.reserve(#num_fields);
             #NEWLINE_TOKEN
             #NEWLINE_TOKEN
             #(#push_batches)*
             {
-                auto result = Collection<#type_ident::IndicatorComponent>(#type_ident::IndicatorComponent()).serialize();
+                auto indicator = #type_ident::IndicatorComponent();
+                auto result = #type_ident::IndicatorComponent::to_data_cell(&indicator, 1);
                 RR_RETURN_NOT_OK(result.error);
                 cells.emplace_back(std::move(result.value));
             }
@@ -1418,11 +1391,24 @@ fn quote_fill_arrow_array_builder(
     builder: &Ident,
     includes: &mut Includes,
 ) -> TokenStream {
+    let parameter_check = quote! {
+        if (builder == nullptr) {
+            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
+        }
+        if (elements == nullptr) {
+            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Cannot serialize null pointer to arrow array.");
+        }
+        #NEWLINE_TOKEN
+        #NEWLINE_TOKEN
+    };
+
     if obj.is_arrow_transparent() {
         let field = &obj.fields[0];
         if let Type::Object(fqname) = &field.typ {
             if field.is_nullable {
                 quote! {
+                    (void)builder;
+                    (void)elements;
                     (void)num_elements;
                     if (true) { // Works around unreachability compiler warning.
                         return rerun::Error(ErrorCode::NotImplemented, "TODO(andreas) Handle nullable extensions");
@@ -1439,7 +1425,12 @@ fn quote_fill_arrow_array_builder(
                 }
             }
         } else {
-            quote_append_field_to_builder(&obj.fields[0], builder, true, includes, objects)
+            let append_to_builder =
+                quote_append_field_to_builder(&obj.fields[0], builder, true, includes, objects);
+            quote! {
+                #parameter_check
+                #append_to_builder
+            }
         }
     } else {
         match obj.specifics {
@@ -1460,6 +1451,7 @@ fn quote_fill_arrow_array_builder(
             );
 
                 quote! {
+                    #parameter_check
                     #(#fill_fields)*
                     #NEWLINE_TOKEN
                     ARROW_RETURN_NOT_OK(builder->AppendValues(static_cast<int64_t>(num_elements), nullptr));
@@ -1557,7 +1549,7 @@ fn quote_fill_arrow_array_builder(
                 });
 
                 quote! {
-                    #NEWLINE_TOKEN
+                    #parameter_check
                     ARROW_RETURN_NOT_OK(#builder->Reserve(static_cast<int64_t>(num_elements)));
                     for (size_t elem_idx = 0; elem_idx < num_elements; elem_idx += 1) {
                         const auto& union_instance = elements[elem_idx];
@@ -1983,8 +1975,8 @@ fn quote_field_type(includes: &mut Includes, obj_field: &ObjectField) -> TokenSt
         }
         Type::Vector { elem_type } => {
             let elem_type = quote_element_type(includes, elem_type);
-            includes.insert_system("vector");
-            quote! { std::vector<#elem_type>  }
+            includes.insert_rerun("collection.hpp");
+            quote! { rerun::Collection<#elem_type>  }
         }
         Type::Object(fqname) => {
             let type_name = quote_fqname_as_type_path(includes, fqname);

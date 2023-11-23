@@ -11,28 +11,27 @@ namespace rerun::archetypes {
 
 namespace rerun {
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::TextDocument>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::TextDocument>::serialize(
         const archetypes::TextDocument& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(2);
+        std::vector<DataCell> cells;
+        cells.reserve(3);
 
         {
-            auto result = Collection<rerun::components::Text>(archetype.text).serialize();
+            auto result = rerun::components::Text::to_data_cell(&archetype.text, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.media_type.has_value()) {
             auto result =
-                Collection<rerun::components::MediaType>(archetype.media_type.value()).serialize();
+                rerun::components::MediaType::to_data_cell(&archetype.media_type.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                Collection<TextDocument::IndicatorComponent>(TextDocument::IndicatorComponent())
-                    .serialize();
+            auto indicator = TextDocument::IndicatorComponent();
+            auto result = TextDocument::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

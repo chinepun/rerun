@@ -145,8 +145,7 @@ namespace rerun {
     template <>
     struct AsComponents<archetypes::ViewCoordinates> {
         /// Serialize all set component batches.
-        static Result<std::vector<SerializedComponentBatch>> serialize(
-            const archetypes::ViewCoordinates& archetype
+        static Result<std::vector<DataCell>> serialize(const archetypes::ViewCoordinates& archetype
         );
     };
 } // namespace rerun

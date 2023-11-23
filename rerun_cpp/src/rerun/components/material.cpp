@@ -16,29 +16,9 @@ namespace rerun::components {
         return datatype;
     }
 
-    Result<std::shared_ptr<arrow::StructBuilder>> Material::new_arrow_array_builder(
-        arrow::MemoryPool* memory_pool
-    ) {
-        if (memory_pool == nullptr) {
-            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Memory pool is null.");
-        }
-
-        return Result(rerun::datatypes::Material::new_arrow_array_builder(memory_pool).value);
-    }
-
     rerun::Error Material::fill_arrow_array_builder(
         arrow::StructBuilder* builder, const Material* elements, size_t num_elements
     ) {
-        if (builder == nullptr) {
-            return rerun::Error(ErrorCode::UnexpectedNullArgument, "Passed array builder is null.");
-        }
-        if (elements == nullptr) {
-            return rerun::Error(
-                ErrorCode::UnexpectedNullArgument,
-                "Cannot serialize null pointer to arrow array."
-            );
-        }
-
         static_assert(sizeof(rerun::datatypes::Material) == sizeof(Material));
         RR_RETURN_NOT_OK(rerun::datatypes::Material::fill_arrow_array_builder(
             builder,
@@ -54,22 +34,27 @@ namespace rerun::components {
     ) {
         // TODO(andreas): Allow configuring the memory pool.
         arrow::MemoryPool* pool = arrow::default_memory_pool();
+        auto datatype = arrow_datatype();
 
-        auto builder_result = Material::new_arrow_array_builder(pool);
-        RR_RETURN_NOT_OK(builder_result.error);
-        auto builder = std::move(builder_result.value);
+        ARROW_ASSIGN_OR_RAISE(auto builder, arrow::MakeBuilder(datatype, pool))
         if (instances && num_instances > 0) {
-            RR_RETURN_NOT_OK(
-                Material::fill_arrow_array_builder(builder.get(), instances, num_instances)
-            );
+            RR_RETURN_NOT_OK(Material::fill_arrow_array_builder(
+                static_cast<arrow::StructBuilder*>(builder.get()),
+                instances,
+                num_instances
+            ));
         }
         std::shared_ptr<arrow::Array> array;
         ARROW_RETURN_NOT_OK(builder->Finish(&array));
 
-        return rerun::DataCell::create(
-            Material::NAME,
-            Material::arrow_datatype(),
-            std::move(array)
-        );
+        static const Result<ComponentTypeHandle> component_type =
+            ComponentType(NAME, datatype).register_component();
+        RR_RETURN_NOT_OK(component_type.error);
+
+        DataCell cell;
+        cell.num_instances = num_instances;
+        cell.array = std::move(array);
+        cell.component_type = component_type.value;
+        return cell;
     }
 } // namespace rerun::components

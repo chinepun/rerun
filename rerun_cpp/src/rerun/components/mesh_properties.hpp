@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "../collection.hpp"
 #include "../data_cell.hpp"
 #include "../datatypes/mesh_properties.hpp"
 #include "../result.hpp"
@@ -11,11 +12,9 @@
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 namespace arrow {
     class DataType;
-    class MemoryPool;
     class StructBuilder;
 } // namespace arrow
 
@@ -30,8 +29,8 @@ namespace rerun::components {
       public:
         // Extensions to generated type defined in 'mesh_properties_ext.cpp'
 
-        static MeshProperties from_triangle_indices(std::vector<uint32_t> indices) {
-            return MeshProperties(indices);
+        static MeshProperties from_triangle_indices(Collection<uint32_t> indices) {
+            return MeshProperties(std::move(indices));
         }
 
       public:
@@ -44,10 +43,10 @@ namespace rerun::components {
             return *this;
         }
 
-        MeshProperties(std::optional<std::vector<uint32_t>> indices_)
+        MeshProperties(std::optional<rerun::Collection<uint32_t>> indices_)
             : props(std::move(indices_)) {}
 
-        MeshProperties& operator=(std::optional<std::vector<uint32_t>> indices_) {
+        MeshProperties& operator=(std::optional<rerun::Collection<uint32_t>> indices_) {
             props = std::move(indices_);
             return *this;
         }
@@ -59,11 +58,6 @@ namespace rerun::components {
 
         /// Returns the arrow data type this type corresponds to.
         static const std::shared_ptr<arrow::DataType>& arrow_datatype();
-
-        /// Creates a new array builder with an array of this type.
-        static Result<std::shared_ptr<arrow::StructBuilder>> new_arrow_array_builder(
-            arrow::MemoryPool* memory_pool
-        );
 
         /// Fills an arrow array builder with an array of this type.
         static rerun::Error fill_arrow_array_builder(
