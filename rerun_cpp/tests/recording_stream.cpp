@@ -7,6 +7,8 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <rerun.hpp>
 
+#include <rerun/c/rerun.h>
+
 #include "error_check.hpp"
 
 namespace fs = std::filesystem;
@@ -34,8 +36,7 @@ struct BadArchetype {
 namespace rerun {
     template <>
     struct AsComponents<BadArchetype> {
-        static rerun::Result<std::vector<rerun::SerializedComponentBatch>>
-            serialize(const BadArchetype&) {
+        static rerun::Result<std::vector<rerun::DataCell>> serialize(const BadArchetype&) {
             return BadComponent::error;
         }
     };
@@ -441,52 +442,13 @@ SCENARIO("Recording stream handles invalid logging gracefully", TEST_TAG) {
     GIVEN("a new RecordingStream") {
         rerun::RecordingStream stream("test");
 
-        // We changed to taking std::string_view instead of const char* and constructing such from nullptr crashes
-        // at least on some C++ implementations.
-        // If we'd want to support this in earnest we'd have to create out own string_view type.
-        //
-        // AND_GIVEN("an invalid path") {
-        //     auto variant = GENERATE(table<const char*, rerun::ErrorCode>({
-        //         std::tuple<const char*, rerun::ErrorCode>(
-        //             nullptr,
-        //             rerun::ErrorCode::UnexpectedNullArgument
-        //         ),
-        //     }));
-        //     const auto [path, error] = variant;
-        //     auto v = rerun::Position2D{1.0, 2.0};
-
-        //     THEN("try_log_data_row returns the correct error") {
-        //         CHECK(stream.try_log_data_row(path, 0, 0, nullptr, true).code == error);
-        //     }
-        //     THEN("try_log returns the correct error") {
-        //         CHECK(stream.try_log(path, rerun::Points2D(v)).code == error);
-        //     }
-        //     THEN("log logs the correct error") {
-        //         check_logged_error(
-        //             [&] { stream.log(std::get<0>(variant), rerun::Points2D(v)); },
-        //             error
-        //         );
-        //     }
-        //     THEN("try_log_timeless returns the correct error") {
-        //         CHECK(stream.try_log_timeless(path, rerun::Points2D(v)).code == error);
-        //     }
-        //     THEN("log_timeless logs the correct error") {
-        //         check_logged_error(
-        //             [&] {
-        //                 stream.log_timeless(std::get<0>(variant), rerun::Points2D(v));
-        //             },
-        //             error
-        //         );
-        //     }
-        // }
-
         AND_GIVEN("a valid path") {
             const char* path = "valid";
 
             AND_GIVEN("a cell with a null buffer") {
-                rerun::DataCell cell;
-                cell.buffer = nullptr;
-                cell.component_name = "valid";
+                rerun::DataCell cell = {};
+                cell.num_instances = 1;
+                cell.component_type = 0;
 
                 THEN("try_log_data_row fails with UnexpectedNullArgument") {
                     CHECK(
@@ -495,40 +457,19 @@ SCENARIO("Recording stream handles invalid logging gracefully", TEST_TAG) {
                     );
                 }
             }
+            AND_GIVEN("a cell with an invalid component type") {
+                rerun::DataCell cell = {};
+                cell.num_instances = 1;
+                cell.component_type = RR_COMPONENT_TYPE_HANDLE_INVALID;
+                cell.array = rerun::components::indicator_arrow_array();
 
-            // We changed to taking std::string_view instead of const char* and constructing such from nullptr crashes
-            // at least on some C++ implementations.
-            // If we'd want to support this in earnest we'd have to create out own string_view type.
-            //
-            // AND_GIVEN("a cell with a null component name") {
-            //     rerun::DataCell cell;
-            //     cell.buffer = std::make_shared<arrow::Buffer>(nullptr, 0);
-            //     cell.component_name = nullptr;
-
-            //     THEN("try_log_data_row fails with UnexpectedNullArgument") {
-            //         CHECK(
-            //             stream.try_log_data_row(path, 1, 1, &cell, true).code ==
-            //             rerun::ErrorCode::UnexpectedNullArgument
-            //         );
-            //     }
-            // }
-
-            AND_GIVEN("a cell with a valid component name but invalid data") {
-                uint8_t invalid_data[1] = {0};
-                rerun::DataCell cell;
-                cell.component_name = "very-valid";
-                cell.buffer = std::make_shared<arrow::Buffer>(invalid_data, sizeof(invalid_data));
-
-                THEN("try_log_data_row fails with ArrowIpcMessageParsingFailure") {
+                THEN("try_log_data_row fails with InvalidComponentTypeHandle") {
                     CHECK(
                         stream.try_log_data_row(path, 1, 1, &cell, true).code ==
-                        rerun::ErrorCode::ArrowIpcMessageParsingFailure
+                        rerun::ErrorCode::InvalidComponentTypeHandle
                     );
                 }
             }
-
-            // TODO(andreas): Missing test that provokes `ArrowDataCellError`. It's fairly hard to
-            // get there which I reckon is a good thing!
         }
     }
 }

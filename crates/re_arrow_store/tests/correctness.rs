@@ -485,7 +485,7 @@ fn gc_correct() {
 
     let stats = DataStoreStats::from_store(&store);
 
-    let (store_events, stats_diff) = store.gc(GarbageCollectionOptions::gc_everything());
+    let (store_events, stats_diff) = store.gc(&GarbageCollectionOptions::gc_everything());
     let stats_diff = stats_diff + stats_empty; // account for fixed overhead
 
     assert_eq!(
@@ -504,7 +504,7 @@ fn gc_correct() {
         assert!(store.get_msg_metadata(&event.row_id).is_none());
     }
 
-    let (store_events, stats_diff) = store.gc(GarbageCollectionOptions::gc_everything());
+    let (store_events, stats_diff) = store.gc(&GarbageCollectionOptions::gc_everything());
     assert!(store_events.is_empty());
     assert_eq!(DataStoreStats::default(), stats_diff);
 
@@ -517,6 +517,48 @@ fn check_still_readable(_store: &DataStore) {
     {
         _ = _store.to_dataframe(); // simple way of checking that everything is still readable
     }
+}
+
+// This used to panic because the GC will decrement the metadata_registry size trackers before
+// getting the confirmation that the row was really removed.
+#[test]
+fn gc_metadata_size() -> anyhow::Result<()> {
+    let mut store = DataStore::new(
+        re_log_types::StoreId::random(re_log_types::StoreKind::Recording),
+        InstanceKey::name(),
+        Default::default(),
+    );
+
+    let point = MyPoint::new(1.0, 1.0);
+
+    for _ in 0..3 {
+        let row = DataRow::from_component_batches(
+            RowId::random(),
+            TimePoint::timeless(),
+            "xxx".into(),
+            [&[point] as _],
+        )?;
+        store.insert_row(&row).unwrap();
+    }
+
+    for _ in 0..2 {
+        _ = store.gc(&GarbageCollectionOptions {
+            target: re_arrow_store::GarbageCollectionTarget::DropAtLeastFraction(1.0),
+            gc_timeless: false,
+            protect_latest: 1,
+            purge_empty_tables: false,
+            dont_protect: Default::default(),
+        });
+        _ = store.gc(&GarbageCollectionOptions {
+            target: re_arrow_store::GarbageCollectionTarget::DropAtLeastFraction(1.0),
+            gc_timeless: false,
+            protect_latest: 1,
+            purge_empty_tables: false,
+            dont_protect: Default::default(),
+        });
+    }
+
+    Ok(())
 }
 
 // ---

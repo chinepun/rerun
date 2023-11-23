@@ -11,27 +11,27 @@ namespace rerun::archetypes {
 
 namespace rerun {
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Image>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Image>::serialize(
         const archetypes::Image& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(2);
+        std::vector<DataCell> cells;
+        cells.reserve(3);
 
         {
-            auto result = Collection<rerun::components::TensorData>(archetype.data).serialize();
+            auto result = rerun::components::TensorData::to_data_cell(&archetype.data, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         if (archetype.draw_order.has_value()) {
             auto result =
-                Collection<rerun::components::DrawOrder>(archetype.draw_order.value()).serialize();
+                rerun::components::DrawOrder::to_data_cell(&archetype.draw_order.value(), 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                Collection<Image::IndicatorComponent>(Image::IndicatorComponent()).serialize();
+            auto indicator = Image::IndicatorComponent();
+            auto result = Image::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }

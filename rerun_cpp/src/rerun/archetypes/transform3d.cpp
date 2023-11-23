@@ -11,23 +11,21 @@ namespace rerun::archetypes {
 
 namespace rerun {
 
-    Result<std::vector<SerializedComponentBatch>> AsComponents<archetypes::Transform3D>::serialize(
+    Result<std::vector<DataCell>> AsComponents<archetypes::Transform3D>::serialize(
         const archetypes::Transform3D& archetype
     ) {
         using namespace archetypes;
-        std::vector<SerializedComponentBatch> cells;
-        cells.reserve(1);
+        std::vector<DataCell> cells;
+        cells.reserve(2);
 
         {
-            auto result =
-                Collection<rerun::components::Transform3D>(archetype.transform).serialize();
+            auto result = rerun::components::Transform3D::to_data_cell(&archetype.transform, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
         {
-            auto result =
-                Collection<Transform3D::IndicatorComponent>(Transform3D::IndicatorComponent())
-                    .serialize();
+            auto indicator = Transform3D::IndicatorComponent();
+            auto result = Transform3D::IndicatorComponent::to_data_cell(&indicator, 1);
             RR_RETURN_NOT_OK(result.error);
             cells.emplace_back(std::move(result.value));
         }
